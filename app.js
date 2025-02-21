@@ -1,6 +1,7 @@
 // Constants for clarity and maintainability
 const X_API_BASE = 'https://api.twitter.com/2';
-const CLIENT_ID = 'TFNFMUNETm1yR1JtX0trOWJQQ3A6MTpjaQ'; // Updated X app client ID
+const API_KEY = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app API Key (OAuth 1.0a or legacy, for reference)
+const OAUTH2_CLIENT_ID = 'TFNFMUNETm1yR1JtX0trOWJQQ3A6MTpjaQ'; // Your X app OAuth 2.0 Client ID
 const REDIRECT_URI = 'https://jfcarpiopuntocom.github.io/Inactive-Non-Mutual-Follows-Finder/callback'; // Your live GitHub Pages URL
 const ACCESS_TOKEN = '11859152-XTKsuXYZkqAd0djHHqRfmnMaiN3n6rcOgMmLjyLY8'; // Your provided X access token
 const MAX_RETRIES = 5; // Increased retries for robustness
@@ -8,7 +9,7 @@ const RETRY_DELAY_BASE = 5000; // 5 seconds initial delay to prevent rapid loopi
 const MAX_RETRY_ATTEMPTS = 3; // Limit total retry attempts to prevent infinite loops
 
 let retryCount = 0; // Track total retry attempts
-const APP_VERSION = '1.11'; // Define app version for logging and UI
+const APP_VERSION = '1.13'; // Define app version for logging and UI
 
 // Main function to find inactive non-mutuals for @jfcarpio with enhanced failsafes
 async function findInactiveNonMutuals() {
@@ -79,24 +80,35 @@ async function findInactiveNonMutuals() {
       errorDiv.innerHTML += `<pre>Warning: Access token invalid or expired for @jfcarpio (v${APP_VERSION}) - ${tokenError.message}. Falling back to OAuth 2.0 PKCE authentication.</pre>`;
       console.log(`Falling back to OAuth 2.0 PKCE for @jfcarpio (v${APP_VERSION})...`);
 
-      // Step 2: Validate client ID before OAuth flow with enhanced checking
-      console.log(`Validating client ID for @jfcarpio (v${APP_VERSION})...`);
-      const isClientIdValid = await validateClientIdWithDetails(CLIENT_ID);
+      // Step 2: Validate client ID before OAuth flow with enhanced checking and detailed guidance
+      console.log(`Validating OAuth 2.0 Client ID for @jfcarpio (v${APP_VERSION})...`);
+      const isClientIdValid = await validateClientIdWithExtendedDetails(OAUTH2_CLIENT_ID, REDIRECT_URI);
       if (!isClientIdValid) {
-        throw new Error(`Invalid client ID for @jfcarpio (v${APP_VERSION}). Please verify your X app credentials in the X Developer Portal (ensure the client ID '${CLIENT_ID}' and redirect URI '${REDIRECT_URI}' match) and update CLIENT_ID in app.js. Visit https://developer.twitter.com/ for detailed guidance.`);
+        // Try API Key as an alternative (if applicable, e.g., for client credentials or verification)
+        console.log(`Trying API Key for @jfcarpio (v${APP_VERSION}) as fallback...`);
+        const isApiKeyValid = await validateApiKeyWithDetails(API_KEY);
+        if (!isApiKeyValid) {
+          throw new Error(`Invalid OAuth 2.0 Client ID and API Key for @jfcarpio (v${APP_VERSION}). Please verify your X app credentials in the X Developer Portal (ensure the OAuth 2.0 Client ID '${OAUTH2_CLIENT_ID}' and redirect URI '${REDIRECT_URI}' match exactly, case-sensitive, and API Key '${API_KEY}' is valid). Update OAUTH2_CLIENT_ID and API_KEY in app.js, ensure your app has 'Web App, Automated App or Bot' type with scopes 'tweet.read', 'users.read', and 'follows.read'. Visit https://developer.twitter.com/ for detailed guidance.`);
+        }
+        // If API Key is valid, use it for client credentials flow (if applicable)
+        accessToken = await useApiKeyForToken(API_KEY);
+        console.log(`API Key validated and used for @jfcarpio (v${APP_VERSION}):`, accessToken);
+        progressDiv.innerHTML = `Authenticated as: @jfcarpio (using API Key, v${APP_VERSION})`;
+        if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Success via API Key)`;
+      } else {
+        console.log(`OAuth 2.0 Client ID validated for @jfcarpio (v${APP_VERSION}).`);
+
+        // Step 3: Initiate OAuth 2.0 PKCE authentication flow for @jfcarpio, handling already logged-in state
+        console.log(`Starting X authentication for @jfcarpio (v${APP_VERSION}, reconfirming even if already logged in)...`);
+        authCode = await initiateAuthFlowWithRetries();
+        console.log(`Authorization code obtained for @jfcarpio (v${APP_VERSION}):`, authCode);
+
+        // Step 4: Exchange code for access token with failsafes
+        accessToken = await exchangeCodeForTokenWithRetries(authCode);
+        console.log(`Successfully authenticated with X for @jfcarpio via OAuth (v${APP_VERSION}). Access token:`, accessToken);
+        progressDiv.innerHTML = `Authenticated as: @jfcarpio (reconfirmed via OAuth, v${APP_VERSION})`;
+        if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Success)`;
       }
-      console.log(`Client ID validated for @jfcarpio (v${APP_VERSION}).`);
-
-      // Step 3: Initiate OAuth 2.0 PKCE authentication flow for @jfcarpio, handling already logged-in state
-      console.log(`Starting X authentication for @jfcarpio (v${APP_VERSION}, reconfirming even if already logged in)...`);
-      authCode = await initiateAuthFlowWithRetries();
-      console.log(`Authorization code obtained for @jfcarpio (v${APP_VERSION}):`, authCode);
-
-      // Step 4: Exchange code for access token with failsafes
-      accessToken = await exchangeCodeForTokenWithRetries(authCode);
-      console.log(`Successfully authenticated with X for @jfcarpio via OAuth (v${APP_VERSION}). Access token:`, accessToken);
-      progressDiv.innerHTML = `Authenticated as: @jfcarpio (reconfirmed via OAuth, v${APP_VERSION})`;
-      if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Success)`;
     }
 
     // Step 5: Fetch and verify user ID for @jfcarpio
@@ -178,7 +190,7 @@ async function findInactiveNonMutuals() {
     retryButton.style.display = 'block';
     if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Failed)`;
 
-    // Limit total retries to prevent infinite loops
+    // Limit total retries to prevent infinite loops and provide clear guidance
     if (retryCount < MAX_RETRY_ATTEMPTS && (error.message.includes('Authentication') || error.message.includes('token') || error.message.includes('access') || error.message.includes('client') || error.message.includes('HTTP'))) {
       retryCount++;
       console.log(`Retry attempt ${retryCount}/${MAX_RETRY_ATTEMPTS} for @jfcarpio (v${APP_VERSION})...`);
@@ -190,9 +202,9 @@ async function findInactiveNonMutuals() {
     } else {
       console.error(`Max retry attempts reached for @jfcarpio (v${APP_VERSION}). Please check credentials and retry manually.`);
       if (errorDiv) {
-        errorDiv.innerHTML += `\n<pre>Max retries reached for @jfcarpio (v${APP_VERSION}). Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.</pre>`;
+        errorDiv.innerHTML += `\n<pre>Max retries reached for @jfcarpio (v${APP_VERSION}). Please verify your Access Token ('${ACCESS_TOKEN}'), OAuth 2.0 Client ID ('${OAUTH2_CLIENT_ID}'), API Key ('${API_KEY}'), and X app settings in the X Developer Portal (ensure 'Web App, Automated App or Bot' type, redirect URI '${REDIRECT_URI}' matches, and scopes 'tweet.read', 'users.read', 'follows.read' are enabled). Then, click "Retry Authentication", refresh the page, or update app.js. Visit https://developer.twitter.com/ for detailed guidance.</pre>`;
       } else {
-        console.log(`%cMax retries reached for @jfcarpio (v${APP_VERSION}). Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.`, 'color: red; font-weight: bold;');
+        console.log(`%cMax retries reached for @jfcarpio (v${APP_VERSION}). Please verify your Access Token ('${ACCESS_TOKEN}'), OAuth 2.0 Client ID ('${OAUTH2_CLIENT_ID}'), API Key ('${API_KEY}'), and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.`, 'color: red; font-weight: bold;');
       }
       if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Failed)`;
     }
@@ -206,7 +218,7 @@ async function findInactiveNonMutuals() {
 }
 
 /**
- * Validates and uses the provided access token for @jfcarpio, falling back if invalid.
+ * Validates and uses the provided access token for @jfcarpio, falling back if invalid, with enhanced logging.
  * @param {string} token - The access token
  * @returns {Promise<string>} Valid access token or throws error
  */
@@ -223,6 +235,7 @@ async function validateAndUseAccessToken(token) {
     if (userDetails.username !== 'jfcarpio') {
       throw new Error('Access token does not belong to @jfcarpio (v${APP_VERSION}). Please provide the correct token.');
     }
+    console.log(`Access token validated successfully for @jfcarpio (v${APP_VERSION}):`, token);
     return token;
   } catch (error) {
     console.error(`Error validating access token for @jfcarpio (v${APP_VERSION}):`, error);
@@ -231,11 +244,12 @@ async function validateAndUseAccessToken(token) {
 }
 
 /**
- * Validates the client ID against X API with detailed error reporting for @jfcarpio.
- * @param {string} clientId - The client ID to validate
+ * Validates the OAuth 2.0 client ID against X API with extended detailed error reporting for @jfcarpio.
+ * @param {string} clientId - The OAuth 2.0 client ID to validate
+ * @param {string} redirectUri - The redirect URI to verify
  * @returns {Promise<boolean>} Whether the client ID is valid
  */
-async function validateClientIdWithDetails(clientId) {
+async function validateClientIdWithExtendedDetails(clientId, redirectUri) {
   try {
     const response = await fetchWithRetry(`${X_API_BASE}/oauth2/token`, {
       method: 'POST',
@@ -244,13 +258,69 @@ async function validateClientIdWithDetails(clientId) {
     });
     if (!response.ok) {
       const errorText = await response.text();
-      console.warn(`Client ID validation failed for @jfcarpio (v${APP_VERSION}):`, errorText);
+      console.warn(`OAuth 2.0 Client ID validation failed for @jfcarpio (v${APP_VERSION}):`, errorText);
+      return false;
+    }
+    // Optionally, verify redirect URI configuration (simplified check; X handles this server-side)
+    const appConfigResponse = await fetchWithRetry(`${X_API_BASE}/oauth2/clients/${clientId}`, {
+      headers: { Authorization: `Basic ${btoa(`${clientId}:`)}` } // Basic auth with client ID only (simplified)
+    });
+    if (!appConfigResponse.ok) {
+      console.warn(`Redirect URI or app config validation failed for @jfcarpio (v${APP_VERSION}):`, await appConfigResponse.text());
       return false;
     }
     return true;
   } catch (error) {
-    console.error(`Error validating client ID for @jfcarpio (v${APP_VERSION}):`, error);
+    console.error(`Error validating OAuth 2.0 Client ID for @jfcarpio (v${APP_VERSION}):`, error);
     return false;
+  }
+}
+
+/**
+ * Validates the API Key against X API with detailed error reporting for @jfcarpio (legacy or client credentials).
+ * @param {string} apiKey - The API Key to validate
+ * @returns {Promise<boolean>} Whether the API Key is valid
+ */
+async function validateApiKeyWithDetails(apiKey) {
+  try {
+    const response = await fetchWithRetry(`${X_API_BASE}/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=client_credentials&client_id=${apiKey}`
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn(`API Key validation failed for @jfcarpio (v${APP_VERSION}):`, errorText);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error(`Error validating API Key for @jfcarpio (v${APP_VERSION}):`, error);
+    return false;
+  }
+}
+
+/**
+ * Uses the API Key for a client credentials flow to obtain an access token (if applicable).
+ * @param {string} apiKey - The API Key
+ * @returns {Promise<string>} Access token or throws error
+ */
+async function useApiKeyForToken(apiKey) {
+  try {
+    const response = await fetchWithRetry(`${X_API_BASE}/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=client_credentials&client_id=${apiKey}`
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Client credentials flow failed for @jfcarpio (v${APP_VERSION}) with API Key: HTTP ${response.status} - ${errorText}`);
+    }
+    const tokenData = await response.json();
+    return tokenData.access_token;
+  } catch (error) {
+    console.error(`Error using API Key for token for @jfcarpio (v${APP_VERSION}):`, error);
+    throw error;
   }
 }
 
@@ -266,7 +336,7 @@ async function initiateAuthFlowWithRetries() {
       const codeChallenge = await generateCodeChallenge(codeVerifier);
 
       // Use prompt=login to force reconfirmation, even if already logged in, with fallback
-      const authUrl = `${X_API_BASE}/oauth2/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=tweet.read%20users.read%20follows.read&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256&prompt=login`;
+      const authUrl = `${X_API_BASE}/oauth2/authorize?response_type=code&client_id=${OAUTH2_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=tweet.read%20users.read%20follows.read&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256&prompt=login`;
       console.log(`Attempt ${attempt}/${MAX_RETRIES}: Redirecting to X for authentication (reconfirming @jfcarpio, v${APP_VERSION}). Open this URL:`, authUrl);
 
       let authWindow;
@@ -393,7 +463,7 @@ async function exchangeCodeForTokenWithRetries(authCode) {
       const tokenResponse = await fetchWithRetry(`${X_API_BASE}/oauth2/token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `grant_type=authorization_code&code=${authCode}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&client_id=${CLIENT_ID}&code_verifier=${codeVerifier}`
+        body: `grant_type=authorization_code&code=${authCode}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&client_id=${OAUTH2_CLIENT_ID}&code_verifier=${codeVerifier}`
       });
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
@@ -413,31 +483,6 @@ async function exchangeCodeForTokenWithRetries(authCode) {
       }
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
-  }
-}
-
-/**
- * Validates and uses the provided access token for @jfcarpio, falling back if invalid.
- * @param {string} token - The access token
- * @returns {Promise<string>} Valid access token or throws error
- */
-async function validateAndUseAccessToken(token) {
-  try {
-    const response = await fetchWithRetry(`${X_API_BASE}/users/me?user.fields=username,name`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Access token validation failed for @jfcarpio (v${APP_VERSION}): HTTP ${response.status} - ${errorText}`);
-    }
-    const userDetails = await response.json().data;
-    if (userDetails.username !== 'jfcarpio') {
-      throw new Error('Access token does not belong to @jfcarpio (v${APP_VERSION}). Please provide the correct token.');
-    }
-    return token;
-  } catch (error) {
-    console.error(`Error validating access token for @jfcarpio (v${APP_VERSION}):`, error);
-    throw error;
   }
 }
 
@@ -688,13 +733,13 @@ async function generateCodeChallenge(codeVerifier) {
 
 // Test cases (commented for future implementation)
 /*
-  test('findInactiveNonMutuals should authenticate with X or access token and fetch data reliably for @jfcarpio (v1.11)', async () => {
+  test('findInactiveNonMutuals should authenticate with X or access token and fetch data reliably for @jfcarpio (v1.13)', async () => {
     // Mock fetch with X API responses for @jfcarpio, including rate limits and errors
   });
-  test('initiateAuthFlowWithRetries should handle already logged-in state and succeed for @jfcarpio (v1.11)', async () => {
+  test('initiateAuthFlowWithRetries should handle already logged-in state and succeed for @jfcarpio (v1.13)', async () => {
     // Mock window.open, location.href, and X API responses
   });
-  test('fetchWithRetry should handle multiple failures and succeed for @jfcarpio (v1.11)', async () => {
+  test('fetchWithRetry should handle multiple failures and succeed for @jfcarpio (v1.13)', async () => {
     // Mock fetch with various error scenarios and retries
   });
 */
