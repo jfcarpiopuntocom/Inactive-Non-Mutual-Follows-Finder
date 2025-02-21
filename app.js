@@ -1,6 +1,6 @@
 // Constants for clarity and maintainability
 const X_API_BASE = 'https://api.twitter.com/2';
-const CLIENT_ID = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app client ID (to be verified)
+const CLIENT_ID = 'TFNFMUNETm1yR1JtX0trOWJQQ3A6MTpjaQ'; // Updated X app client ID
 const REDIRECT_URI = 'https://jfcarpiopuntocom.github.io/Inactive-Non-Mutual-Follows-Finder/callback'; // Your live GitHub Pages URL
 const ACCESS_TOKEN = '11859152-XTKsuXYZkqAd0djHHqRfmnMaiN3n6rcOgMmLjyLY8'; // Your provided X access token
 const MAX_RETRIES = 5; // Increased retries for robustness
@@ -8,6 +8,7 @@ const RETRY_DELAY_BASE = 5000; // 5 seconds initial delay to prevent rapid loopi
 const MAX_RETRY_ATTEMPTS = 3; // Limit total retry attempts to prevent infinite loops
 
 let retryCount = 0; // Track total retry attempts
+const APP_VERSION = '1.11'; // Define app version for logging and UI
 
 // Main function to find inactive non-mutuals for @jfcarpio with enhanced failsafes
 async function findInactiveNonMutuals() {
@@ -20,6 +21,7 @@ async function findInactiveNonMutuals() {
   const instructionsDiv = document.getElementById('instructions');
   const callbackInput = document.getElementById('callbackUrl');
   const submitCallbackButton = document.getElementById('submitCallback');
+  const versionDiv = document.getElementById('version'); // Add version div for UI updates
 
   let authCode = null;
   let accessToken = null;
@@ -33,20 +35,25 @@ async function findInactiveNonMutuals() {
     { el: loadingDiv, id: 'loading' },
     { el: instructionsDiv, id: 'instructions' },
     { el: callbackInput, id: 'callbackUrl' },
-    { el: submitCallbackButton, id: 'submitCallback' }
+    { el: submitCallbackButton, id: 'submitCallback' },
+    { el: versionDiv, id: 'version' }
   ];
   const missingElements = requiredElements.filter(({ el }) => el === null).map(({ id }) => id);
   if (missingElements.length > 0) {
-    console.error('DOM elements missing for @jfcarpio app:', missingElements);
-    const errorMessage = `Error: Missing DOM elements (${missingElements.join(', ')}) for @jfcarpio. Please refresh, check console, ensure index.html matches this version, and clear browser cache.`;
+    console.error(`DOM elements missing for @jfcarpio app (v${APP_VERSION}):`, missingElements);
+    const errorMessage = `Error: Missing DOM elements (${missingElements.join(', ')}) for @jfcarpio (v${APP_VERSION}). Please refresh, check console, ensure index.html matches this version, and clear browser cache.`;
     if (errorDiv) {
       errorDiv.innerHTML = `<pre>${errorMessage}</pre>`;
     } else {
       console.log(`%c${errorMessage}`, 'color: red; font-weight: bold;');
     }
     if (startButton) startButton.disabled = false;
+    if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Failed)`;
     return;
   }
+
+  // Update version in UI
+  if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Loading)`;
 
   // Reset UI state and prevent rapid updates
   startButton.disabled = true;
@@ -61,65 +68,67 @@ async function findInactiveNonMutuals() {
 
   try {
     // Step 1: Try using the provided access token first for simplicity
-    console.log('Attempting to use access token for @jfcarpio...');
+    console.log(`Attempting to use access token for @jfcarpio (v${APP_VERSION})...`);
     try {
       accessToken = await validateAndUseAccessToken(ACCESS_TOKEN);
-      console.log('Access token validated and used for @jfcarpio:', accessToken);
-      progressDiv.innerHTML = `Authenticated as: @jfcarpio (using access token)`;
+      console.log(`Access token validated and used for @jfcarpio (v${APP_VERSION}):`, accessToken);
+      progressDiv.innerHTML = `Authenticated as: @jfcarpio (using access token, v${APP_VERSION})`;
+      if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Success)`;
     } catch (tokenError) {
-      console.warn('Access token failed for @jfcarpio:', tokenError.message);
-      errorDiv.innerHTML += `<pre>Warning: Access token invalid or expired for @jfcarpio - ${tokenError.message}. Falling back to OAuth 2.0 PKCE authentication.</pre>`;
-      console.log('Falling back to OAuth 2.0 PKCE for @jfcarpio...');
+      console.warn(`Access token failed for @jfcarpio (v${APP_VERSION}):`, tokenError.message);
+      errorDiv.innerHTML += `<pre>Warning: Access token invalid or expired for @jfcarpio (v${APP_VERSION}) - ${tokenError.message}. Falling back to OAuth 2.0 PKCE authentication.</pre>`;
+      console.log(`Falling back to OAuth 2.0 PKCE for @jfcarpio (v${APP_VERSION})...`);
 
       // Step 2: Validate client ID before OAuth flow with enhanced checking
-      console.log('Validating client ID for @jfcarpio...');
+      console.log(`Validating client ID for @jfcarpio (v${APP_VERSION})...`);
       const isClientIdValid = await validateClientIdWithDetails(CLIENT_ID);
       if (!isClientIdValid) {
-        throw new Error('Invalid client ID for @jfcarpio. Please verify your X app credentials in the X Developer Portal (ensure the client ID and redirect URI match) and update CLIENT_ID in app.js.');
+        throw new Error(`Invalid client ID for @jfcarpio (v${APP_VERSION}). Please verify your X app credentials in the X Developer Portal (ensure the client ID '${CLIENT_ID}' and redirect URI '${REDIRECT_URI}' match) and update CLIENT_ID in app.js. Visit https://developer.twitter.com/ for detailed guidance.`);
       }
-      console.log('Client ID validated for @jfcarpio.');
+      console.log(`Client ID validated for @jfcarpio (v${APP_VERSION}).`);
 
       // Step 3: Initiate OAuth 2.0 PKCE authentication flow for @jfcarpio, handling already logged-in state
-      console.log('Starting X authentication for @jfcarpio (reconfirming even if already logged in)...');
+      console.log(`Starting X authentication for @jfcarpio (v${APP_VERSION}, reconfirming even if already logged in)...`);
       authCode = await initiateAuthFlowWithRetries();
-      console.log('Authorization code obtained for @jfcarpio:', authCode);
+      console.log(`Authorization code obtained for @jfcarpio (v${APP_VERSION}):`, authCode);
 
       // Step 4: Exchange code for access token with failsafes
       accessToken = await exchangeCodeForTokenWithRetries(authCode);
-      console.log('Successfully authenticated with X for @jfcarpio via OAuth. Access token:', accessToken);
-      progressDiv.innerHTML = `Authenticated as: @jfcarpio (reconfirmed via OAuth)`;
+      console.log(`Successfully authenticated with X for @jfcarpio via OAuth (v${APP_VERSION}). Access token:`, accessToken);
+      progressDiv.innerHTML = `Authenticated as: @jfcarpio (reconfirmed via OAuth, v${APP_VERSION})`;
+      if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Success)`;
     }
 
     // Step 5: Fetch and verify user ID for @jfcarpio
-    console.log('Fetching user ID for @jfcarpio...');
+    console.log(`Fetching user ID for @jfcarpio (v${APP_VERSION})...`);
     const userId = await getUserId(accessToken);
-    console.log('User ID for @jfcarpio obtained:', userId);
+    console.log(`User ID for @jfcarpio obtained (v${APP_VERSION}):`, userId);
 
     // Verify X account usage (ensure it’s @jfcarpio, even if already logged in)
-    console.log('Verifying X account details for @jfcarpio (reconfirming identity)...');
+    console.log(`Verifying X account details for @jfcarpio (v${APP_VERSION}, reconfirming identity)...`);
     const userDetails = await fetchUserDetails(userId, accessToken);
     if (userDetails.username !== 'jfcarpio') {
-      throw new Error('This app is configured for @jfcarpio, but the authenticated account does not match. Please log in with @jfcarpio.');
+      throw new Error(`This app is configured for @jfcarpio (v${APP_VERSION}), but the authenticated account does not match. Please log in with @jfcarpio.`);
     }
-    console.log('Verified X account: @jfcarpio (reconfirmed)');
-    progressDiv.innerHTML = `Authenticated as: @${userDetails.username} (reconfirmed)`;
+    console.log(`Verified X account: @jfcarpio (reconfirmed, v${APP_VERSION})`);
+    progressDiv.innerHTML = `Authenticated as: @${userDetails.username} (reconfirmed, v${APP_VERSION})`;
 
     // Step 6: Fetch follows and followers for @jfcarpio
-    progressDiv.innerHTML = 'Fetching follows for @jfcarpio...';
-    console.log('Fetching follows for @jfcarpio...');
+    progressDiv.innerHTML = `Fetching follows for @jfcarpio (v${APP_VERSION})...`;
+    console.log(`Fetching follows for @jfcarpio (v${APP_VERSION})...`);
     const follows = await getAllFollowsWithRetries(userId, accessToken);
-    console.log('Follows for @jfcarpio fetched:', follows.length);
+    console.log(`Follows for @jfcarpio fetched (v${APP_VERSION}):`, follows.length);
 
-    progressDiv.innerHTML = 'Fetching followers for @jfcarpio...';
-    console.log('Fetching followers for @jfcarpio...');
+    progressDiv.innerHTML = `Fetching followers for @jfcarpio (v${APP_VERSION})...`;
+    console.log(`Fetching followers for @jfcarpio (v${APP_VERSION})...`);
     const followers = await getAllFollowersWithRetries(userId, accessToken);
-    console.log('Followers for @jfcarpio fetched:', followers.length);
+    console.log(`Followers for @jfcarpio fetched (v${APP_VERSION}):`, followers.length);
 
     // Step 7: Identify non-mutuals for @jfcarpio
-    console.log('Identifying non-mutuals for @jfcarpio...');
+    console.log(`Identifying non-mutuals for @jfcarpio (v${APP_VERSION})...`);
     const followerIds = new Set(followers.map(follower => follower.id));
     const nonMutuals = follows.filter(follow => !followerIds.has(follow.id));
-    console.log('Non-mutuals for @jfcarpio identified:', nonMutuals.length);
+    console.log(`Non-mutuals for @jfcarpio identified (v${APP_VERSION}):`, nonMutuals.length);
 
     // Step 8: Check inactivity for non-mutuals (expanded scope)
     const inactiveNonMutuals = [];
@@ -127,67 +136,72 @@ async function findInactiveNonMutuals() {
     fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4);
     const startTime = fourMonthsAgo.toISOString();
 
-    progressDiv.innerHTML = 'Checking non-mutuals for inactivity for @jfcarpio...';
-    console.log('Checking inactivity for non-mutuals of @jfcarpio...');
+    progressDiv.innerHTML = `Checking non-mutuals for inactivity for @jfcarpio (v${APP_VERSION})...`;
+    console.log(`Checking inactivity for non-mutuals of @jfcarpio (v${APP_VERSION})...`);
     for (let i = 0; i < Math.min(nonMutuals.length, 10000) && inactiveNonMutuals.length < 3000; i++) {
       const user = nonMutuals[i];
       try {
-        console.log(`Checking user ${user.id} (${user.username}) for @jfcarpio...`);
+        console.log(`Checking user ${user.id} (${user.username}) for @jfcarpio (v${APP_VERSION})...`);
         const tweets = await getRecentTweetsWithRetries(user.id, startTime, accessToken);
         if (tweets.meta.result_count === 0) {
           inactiveNonMutuals.push(user);
-          console.log(`User ${user.id} (${user.username}) is inactive for @jfcarpio.`);
+          console.log(`User ${user.id} (${user.username}) is inactive for @jfcarpio (v${APP_VERSION}).`);
         } else {
-          console.log(`User ${user.id} (${user.username}) is active for @jfcarpio.`);
+          console.log(`User ${user.id} (${user.username}) is active for @jfcarpio (v${APP_VERSION}).`);
         }
       } catch (error) {
-        console.error(`Error checking user ${user.id} (${user.username}) for @jfcarpio:`, error);
-        errorDiv.innerHTML += `\n<pre>Warning: Skipped user ${user.username} (ID: ${user.id}) due to error - ${error.message}. Check console for details.</pre>`;
+        console.error(`Error checking user ${user.id} (${user.username}) for @jfcarpio (v${APP_VERSION}):`, error);
+        errorDiv.innerHTML += `\n<pre>Warning: Skipped user ${user.username} (ID: ${user.id}) due to error (v${APP_VERSION}) - ${error.message}. Check console for details.</pre>`;
       }
       updateProgress(i + 1, nonMutuals.length, inactiveNonMutuals.length);
       await handleRateLimits();
     }
 
     // Step 9: Display results professionally for @jfcarpio
-    console.log('Displaying results for @jfcarpio...');
+    console.log(`Displaying results for @jfcarpio (v${APP_VERSION})...`);
     displayResults(inactiveNonMutuals, userId);
+    if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Success)`;
   } catch (error) {
-    console.error('Error in findInactiveNonMutuals for @jfcarpio:', error);
-    const errorMessage = `Critical Error for @jfcarpio: ${error.message}. Check the console for detailed bug report, including stack trace and error context.`;
+    console.error(`Error in findInactiveNonMutuals for @jfcarpio (v${APP_VERSION}):`, error);
+    const errorMessage = `Critical Error for @jfcarpio (v${APP_VERSION}): ${error.message}. Check the console for detailed bug report, including stack trace and error context.`;
     if (errorDiv) {
       // Prevent rapid updates by checking if the last message matches
       const currentError = errorDiv.innerHTML.trim();
       if (!currentError.includes(errorMessage)) {
         errorDiv.innerHTML = `<pre>${errorMessage}</pre>`;
       } else {
-        console.warn('Duplicate error prevented for @jfcarpio:', errorMessage);
+        console.warn(`Duplicate error prevented for @jfcarpio (v${APP_VERSION}):`, errorMessage);
       }
     } else {
       console.log(`%c${errorMessage}`, 'color: red; font-weight: bold;');
     }
     retryButton.style.display = 'block';
+    if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Failed)`;
 
     // Limit total retries to prevent infinite loops
     if (retryCount < MAX_RETRY_ATTEMPTS && (error.message.includes('Authentication') || error.message.includes('token') || error.message.includes('access') || error.message.includes('client') || error.message.includes('HTTP'))) {
       retryCount++;
-      console.log(`Retry attempt ${retryCount}/${MAX_RETRY_ATTEMPTS} for @jfcarpio...`);
+      console.log(`Retry attempt ${retryCount}/${MAX_RETRY_ATTEMPTS} for @jfcarpio (v${APP_VERSION})...`);
       const waitTime = RETRY_DELAY_BASE * Math.pow(2, retryCount - 1); // Exponential backoff
       setTimeout(() => {
         findInactiveNonMutuals();
       }, waitTime);
+      if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Retrying, Attempt ${retryCount}/${MAX_RETRY_ATTEMPTS})`;
     } else {
-      console.error('Max retry attempts reached for @jfcarpio. Please check credentials and retry manually.');
+      console.error(`Max retry attempts reached for @jfcarpio (v${APP_VERSION}). Please check credentials and retry manually.`);
       if (errorDiv) {
-        errorDiv.innerHTML += `\n<pre>Max retries reached for @jfcarpio. Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.</pre>`;
+        errorDiv.innerHTML += `\n<pre>Max retries reached for @jfcarpio (v${APP_VERSION}). Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.</pre>`;
       } else {
-        console.log(`%cMax retries reached for @jfcarpio. Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.`, 'color: red; font-weight: bold;');
+        console.log(`%cMax retries reached for @jfcarpio (v${APP_VERSION}). Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.`, 'color: red; font-weight: bold;');
       }
+      if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Failed)`;
     }
   } finally {
     startButton.disabled = false;
     startButton.innerText = 'Authenticate with X and Find Inactive Non-Mutuals';
     loadingDiv.style.display = 'none';
     instructionsDiv.style.display = 'none';
+    if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Idle)`;
   }
 }
 
@@ -203,15 +217,15 @@ async function validateAndUseAccessToken(token) {
     });
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Access token validation failed for @jfcarpio: HTTP ${response.status} - ${errorText}`);
+      throw new Error(`Access token validation failed for @jfcarpio (v${APP_VERSION}): HTTP ${response.status} - ${errorText}`);
     }
     const userDetails = await response.json().data;
     if (userDetails.username !== 'jfcarpio') {
-      throw new Error('Access token does not belong to @jfcarpio. Please provide the correct token.');
+      throw new Error('Access token does not belong to @jfcarpio (v${APP_VERSION}). Please provide the correct token.');
     }
     return token;
   } catch (error) {
-    console.error('Error validating access token for @jfcarpio:', error);
+    console.error(`Error validating access token for @jfcarpio (v${APP_VERSION}):`, error);
     throw error;
   }
 }
@@ -230,12 +244,12 @@ async function validateClientIdWithDetails(clientId) {
     });
     if (!response.ok) {
       const errorText = await response.text();
-      console.warn('Client ID validation failed for @jfcarpio:', errorText);
+      console.warn(`Client ID validation failed for @jfcarpio (v${APP_VERSION}):`, errorText);
       return false;
     }
     return true;
   } catch (error) {
-    console.error('Error validating client ID for @jfcarpio:', error);
+    console.error(`Error validating client ID for @jfcarpio (v${APP_VERSION}):`, error);
     return false;
   }
 }
@@ -253,32 +267,32 @@ async function initiateAuthFlowWithRetries() {
 
       // Use prompt=login to force reconfirmation, even if already logged in, with fallback
       const authUrl = `${X_API_BASE}/oauth2/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=tweet.read%20users.read%20follows.read&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256&prompt=login`;
-      console.log(`Attempt ${attempt}/${MAX_RETRIES}: Redirecting to X for authentication (reconfirming @jfcarpio). Open this URL:`, authUrl);
+      console.log(`Attempt ${attempt}/${MAX_RETRIES}: Redirecting to X for authentication (reconfirming @jfcarpio, v${APP_VERSION}). Open this URL:`, authUrl);
 
       let authWindow;
       try {
         authWindow = window.open(authUrl, '_blank', 'width=600,height=600');
         if (!authWindow) throw new Error('Popup blocked. Please open this URL manually:', authUrl);
       } catch (popupError) {
-        console.error('Popup error for @jfcarpio (Attempt ' + attempt + '):', popupError);
+        console.error(`Popup error for @jfcarpio (v${APP_VERSION}, Attempt ${attempt}):`, popupError);
         if (errorDiv) {
-          errorDiv.innerHTML = `<p class="error">Popup blocked or failed (Attempt ${attempt}). Please open this URL manually: <a href="${authUrl}" target="_blank">${authUrl}</a>, authorize with @jfcarpio, then paste the callback URL below.</p>`;
+          errorDiv.innerHTML = `<p class="error">Popup blocked or failed (Attempt ${attempt}, v${APP_VERSION}). Please open this URL manually: <a href="${authUrl}" target="_blank">${authUrl}</a>, authorize with @jfcarpio, then paste the callback URL below.</p>`;
         } else {
-          console.log(`%cPopup blocked or failed (Attempt ${attempt}) for @jfcarpio. Please open: ${authUrl}`, 'color: red; font-weight: bold;');
+          console.log(`%cPopup blocked or failed (Attempt ${attempt}, v${APP_VERSION}) for @jfcarpio. Please open: ${authUrl}`, 'color: red; font-weight: bold;');
         }
         return await getAuthCodeManuallyWithRetries(REDIRECT_URI, state, attempt);
       }
 
       return await pollForCallbackWithRetries(authWindow, REDIRECT_URI, state, attempt);
     } catch (error) {
-      console.error(`Authentication attempt ${attempt} failed for @jfcarpio:`, error);
-      if (attempt === MAX_RETRIES) throw new Error(`Authentication failed after ${MAX_RETRIES} retries for @jfcarpio: ${error.message}`);
+      console.error(`Authentication attempt ${attempt} failed for @jfcarpio (v${APP_VERSION}):`, error);
+      if (attempt === MAX_RETRIES) throw new Error(`Authentication failed after ${MAX_RETRIES} retries for @jfcarpio (v${APP_VERSION}): ${error.message}`);
       const waitTime = RETRY_DELAY_BASE * Math.pow(2, attempt - 1); // Exponential backoff
-      console.log(`Retrying authentication for @jfcarpio in ${waitTime / 1000} seconds...`);
+      console.log(`Retrying authentication for @jfcarpio (v${APP_VERSION}) in ${waitTime / 1000} seconds...`);
       if (errorDiv) {
-        errorDiv.innerHTML = `<pre>Retrying authentication (attempt ${attempt + 1}/${MAX_RETRIES}) for @jfcarpio: ${error.message}. Check console for details.</pre>`;
+        errorDiv.innerHTML = `<pre>Retrying authentication (attempt ${attempt + 1}/${MAX_RETRIES}, v${APP_VERSION}) for @jfcarpio: ${error.message}. Check console for details.</pre>`;
       } else {
-        console.log(`%cRetrying authentication (attempt ${attempt + 1}/${MAX_RETRIES}) for @jfcarpio: ${error.message}`, 'color: orange; font-weight: bold;');
+        console.log(`%cRetrying authentication (attempt ${attempt + 1}/${MAX_RETRIES}, v${APP_VERSION}) for @jfcarpio: ${error.message}`, 'color: orange; font-weight: bold;');
       }
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
@@ -299,7 +313,7 @@ async function pollForCallbackWithRetries(authWindow, redirectUri, state, attemp
       try {
         if (authWindow.closed) {
           clearInterval(checkInterval);
-          reject(new Error('Authentication window closed unexpectedly for @jfcarpio (Attempt ' + attempt + '). Please retry.'));
+          reject(new Error(`Authentication window closed unexpectedly for @jfcarpio (v${APP_VERSION}, Attempt ${attempt}). Please retry.`));
           return;
         }
         const url = authWindow.location.href;
@@ -309,8 +323,8 @@ async function pollForCallbackWithRetries(authWindow, redirectUri, state, attemp
           const params = new URLSearchParams(url.split('?')[1]);
           const code = params.get('code');
           const returnedState = params.get('state');
-          if (!code) reject(new Error('No authorization code found in callback URL for @jfcarpio (Attempt ' + attempt + ')'));
-          if (returnedState !== state) reject(new Error('CSRF state mismatch detected for @jfcarpio (Attempt ' + attempt + ')'));
+          if (!code) reject(new Error(`No authorization code found in callback URL for @jfcarpio (v${APP_VERSION}, Attempt ${attempt})`));
+          if (returnedState !== state) reject(new Error(`CSRF state mismatch detected for @jfcarpio (v${APP_VERSION}, Attempt ${attempt})`));
           resolve(code);
         }
       } catch (e) {
@@ -321,7 +335,7 @@ async function pollForCallbackWithRetries(authWindow, redirectUri, state, attemp
     setTimeout(() => {
       clearInterval(checkInterval);
       authWindow.close();
-      reject(new Error('Authentication timed out after 5 minutes for @jfcarpio (Attempt ' + attempt + '). Please retry.'));
+      reject(new Error(`Authentication timed out after 5 minutes for @jfcarpio (v${APP_VERSION}, Attempt ${attempt}). Please retry.`));
     }, 300000); // 5-minute timeout
   });
 }
@@ -339,9 +353,9 @@ async function getAuthCodeManuallyWithRetries(redirectUri, state, attempt) {
       const callbackUrl = callbackInput.value.trim();
       if (!callbackUrl) {
         if (errorDiv) {
-          errorDiv.innerHTML = '<p class="error">Please paste the callback URL from X for @jfcarpio (Attempt ' + attempt + ').</p>';
+          errorDiv.innerHTML = `<p class="error">Please paste the callback URL from X for @jfcarpio (v${APP_VERSION}, Attempt ${attempt}).</p>`;
         } else {
-          console.log(`%cPlease paste the callback URL from X for @jfcarpio (Attempt ${attempt}).`, 'color: red; font-weight: bold;');
+          console.log(`%cPlease paste the callback URL from X for @jfcarpio (v${APP_VERSION}, Attempt ${attempt}).`, 'color: red; font-weight: bold;');
         }
         return;
       }
@@ -349,15 +363,15 @@ async function getAuthCodeManuallyWithRetries(redirectUri, state, attempt) {
         const params = new URLSearchParams(new URL(callbackUrl).search);
         const code = params.get('code');
         const returnedState = params.get('state');
-        if (!code) throw new Error('No authorization code found in callback URL for @jfcarpio (Attempt ' + attempt + ')');
-        if (returnedState !== state) throw new Error('CSRF state mismatch detected for @jfcarpio (Attempt ' + attempt + ')');
+        if (!code) throw new Error(`No authorization code found in callback URL for @jfcarpio (v${APP_VERSION}, Attempt ${attempt})`);
+        if (returnedState !== state) throw new Error(`CSRF state mismatch detected for @jfcarpio (v${APP_VERSION}, Attempt ${attempt})`);
         resolve(code);
       } catch (error) {
-        console.error('Error parsing callback URL for @jfcarpio (Attempt ' + attempt + '):', error);
+        console.error(`Error parsing callback URL for @jfcarpio (v${APP_VERSION}, Attempt ${attempt}):`, error);
         if (errorDiv) {
-          errorDiv.innerHTML = `<p class="error">Invalid callback URL for @jfcarpio (Attempt ${attempt}): ${error.message}. Please ensure you copied the full URL from X after authentication.</p>`;
+          errorDiv.innerHTML = `<p class="error">Invalid callback URL for @jfcarpio (v${APP_VERSION}, Attempt ${attempt}): ${error.message}. Please ensure you copied the full URL from X after authentication.</p>`;
         } else {
-          console.log(`%cInvalid callback URL for @jfcarpio (Attempt ${attempt}): ${error.message}`, 'color: red; font-weight: bold;');
+          console.log(`%cInvalid callback URL for @jfcarpio (v${APP_VERSION}, Attempt ${attempt}): ${error.message}`, 'color: red; font-weight: bold;');
         }
         reject(error);
       }
@@ -372,7 +386,7 @@ async function getAuthCodeManuallyWithRetries(redirectUri, state, attempt) {
  */
 async function exchangeCodeForTokenWithRetries(authCode) {
   const codeVerifier = sessionStorage.getItem('codeVerifier');
-  if (!codeVerifier) throw new Error('Code verifier not found for @jfcarpio. Please restart authentication.');
+  if (!codeVerifier) throw new Error(`Code verifier not found for @jfcarpio (v${APP_VERSION}). Please restart authentication.`);
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -383,22 +397,47 @@ async function exchangeCodeForTokenWithRetries(authCode) {
       });
       if (!tokenResponse.ok) {
         const errorText = await tokenResponse.text();
-        throw new Error(`Token exchange failed for @jfcarpio: HTTP ${tokenResponse.status} - ${errorText}`);
+        throw new Error(`Token exchange failed for @jfcarpio (v${APP_VERSION}): HTTP ${tokenResponse.status} - ${errorText}`);
       }
       const tokenData = await tokenResponse.json();
       return tokenData.access_token;
     } catch (error) {
-      console.error(`Token exchange attempt ${attempt} failed for @jfcarpio:`, error);
+      console.error(`Token exchange attempt ${attempt} failed for @jfcarpio (v${APP_VERSION}):`, error);
       if (attempt === MAX_RETRIES) throw error;
       const waitTime = RETRY_DELAY_BASE * Math.pow(2, attempt - 1); // Exponential backoff
-      console.log(`Retrying token exchange for @jfcarpio in ${waitTime / 1000} seconds...`);
+      console.log(`Retrying token exchange for @jfcarpio (v${APP_VERSION}) in ${waitTime / 1000} seconds...`);
       if (errorDiv) {
-        errorDiv.innerHTML += `\n<pre>Retrying token exchange (attempt ${attempt + 1}/${MAX_RETRIES}) for @jfcarpio: ${error.message}. Check console for details.</pre>`;
+        errorDiv.innerHTML += `\n<pre>Retrying token exchange (attempt ${attempt + 1}/${MAX_RETRIES}, v${APP_VERSION}) for @jfcarpio: ${error.message}. Check console for details.</pre>`;
       } else {
-        console.log(`%cRetrying token exchange (attempt ${attempt + 1}/${MAX_RETRIES}) for @jfcarpio: ${error.message}`, 'color: orange; font-weight: bold;');
+        console.log(`%cRetrying token exchange (attempt ${attempt + 1}/${MAX_RETRIES}, v${APP_VERSION}) for @jfcarpio: ${error.message}`, 'color: orange; font-weight: bold;');
       }
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
+  }
+}
+
+/**
+ * Validates and uses the provided access token for @jfcarpio, falling back if invalid.
+ * @param {string} token - The access token
+ * @returns {Promise<string>} Valid access token or throws error
+ */
+async function validateAndUseAccessToken(token) {
+  try {
+    const response = await fetchWithRetry(`${X_API_BASE}/users/me?user.fields=username,name`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Access token validation failed for @jfcarpio (v${APP_VERSION}): HTTP ${response.status} - ${errorText}`);
+    }
+    const userDetails = await response.json().data;
+    if (userDetails.username !== 'jfcarpio') {
+      throw new Error('Access token does not belong to @jfcarpio (v${APP_VERSION}). Please provide the correct token.');
+    }
+    return token;
+  } catch (error) {
+    console.error(`Error validating access token for @jfcarpio (v${APP_VERSION}):`, error);
+    throw error;
   }
 }
 
@@ -412,11 +451,11 @@ async function getUserId(accessToken) {
     const response = await fetchWithRetry(`${X_API_BASE}/users/me`, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
-    if (!response.ok) throw new Error(`Failed to fetch user ID for @jfcarpio: HTTP ${response.status} - ${response.statusText}`);
+    if (!response.ok) throw new Error(`Failed to fetch user ID for @jfcarpio (v${APP_VERSION}): HTTP ${response.status} - ${response.statusText}`);
     const data = await response.json();
     return data.data.id;
   } catch (error) {
-    console.error('Error in getUserId for @jfcarpio:', error);
+    console.error(`Error in getUserId for @jfcarpio (v${APP_VERSION}):`, error);
     throw error;
   }
 }
@@ -432,10 +471,10 @@ async function fetchUserDetails(userId, accessToken) {
     const response = await fetchWithRetry(`${X_API_BASE}/users/${userId}?user.fields=username,name`, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
-    if (!response.ok) throw new Error(`Failed to fetch user details for @jfcarpio: HTTP ${response.status} - ${response.statusText}`);
+    if (!response.ok) throw new Error(`Failed to fetch user details for @jfcarpio (v${APP_VERSION}): HTTP ${response.status} - ${response.statusText}`);
     return await response.json().data;
   } catch (error) {
-    console.error('Error in fetchUserDetails for @jfcarpio:', error);
+    console.error(`Error in fetchUserDetails for @jfcarpio (v${APP_VERSION}):`, error);
     throw error;
   }
 }
@@ -460,7 +499,7 @@ async function getAllFollowsWithRetries(userId, accessToken) {
       nextToken = data.meta.next_token;
       await handleRateLimits(response);
     } catch (error) {
-      console.error('Error in getAllFollows for @jfcarpio:', error);
+      console.error(`Error in getAllFollows for @jfcarpio (v${APP_VERSION}):`, error);
       throw error;
     }
   } while (nextToken);
@@ -487,7 +526,7 @@ async function getAllFollowersWithRetries(userId, accessToken) {
       nextToken = data.meta.next_token;
       await handleRateLimits(response);
     } catch (error) {
-      console.error('Error in getAllFollowers for @jfcarpio:', error);
+      console.error(`Error in getAllFollowers for @jfcarpio (v${APP_VERSION}):`, error);
       throw error;
     }
   } while (nextToken);
@@ -520,18 +559,18 @@ async function fetchWithRetry(url, options) {
       const response = await fetch(url, options);
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`API call failed for @jfcarpio: HTTP ${response.status} - ${errorText}`);
+        throw new Error(`API call failed for @jfcarpio (v${APP_VERSION}): HTTP ${response.status} - ${errorText}`);
       }
       return response;
     } catch (error) {
-      console.error(`Fetch attempt ${attempt} failed for @jfcarpio:`, error);
+      console.error(`Fetch attempt ${attempt} failed for @jfcarpio (v${APP_VERSION}):`, error);
       if (attempt === MAX_RETRIES) throw error;
       const waitTime = RETRY_DELAY_BASE * Math.pow(2, attempt - 1); // Exponential backoff
-      console.log(`Retrying API call for @jfcarpio in ${waitTime / 1000} seconds...`);
+      console.log(`Retrying API call for @jfcarpio (v${APP_VERSION}) in ${waitTime / 1000} seconds...`);
       if (errorDiv) {
-        errorDiv.innerHTML += `\n<pre>Retrying API call (attempt ${attempt + 1}/${MAX_RETRIES}) for @jfcarpio: ${error.message}. Check console for details.</pre>`;
+        errorDiv.innerHTML += `\n<pre>Retrying API call (attempt ${attempt + 1}/${MAX_RETRIES}, v${APP_VERSION}) for @jfcarpio: ${error.message}. Check console for details.</pre>`;
       } else {
-        console.log(`%cRetrying API call (attempt ${attempt + 1}/${MAX_RETRIES}) for @jfcarpio: ${error.message}`, 'color: orange; font-weight: bold;');
+        console.log(`%cRetrying API call (attempt ${attempt + 1}/${MAX_RETRIES}, v${APP_VERSION}) for @jfcarpio: ${error.message}`, 'color: orange; font-weight: bold;');
       }
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
@@ -549,17 +588,17 @@ async function handleRateLimits(response) {
     if (rateLimitRemaining && parseInt(rateLimitRemaining) <= 5) {
       const resetTime = new Date(parseInt(rateLimitReset) * 1000);
       const waitTime = Math.max(0, resetTime - Date.now() + 1000); // Add 1s buffer
-      console.log(`Rate limit nearing exhaustion for @jfcarpio. Waiting ${waitTime / 1000} seconds...`);
+      console.log(`Rate limit nearing exhaustion for @jfcarpio (v${APP_VERSION}). Waiting ${waitTime / 1000} seconds...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     } else {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Default 1s delay
     }
   } catch (error) {
-    console.error('Error in handleRateLimits for @jfcarpio:', error);
+    console.error(`Error in handleRateLimits for @jfcarpio (v${APP_VERSION}):`, error);
     if (errorDiv) {
-      errorDiv.innerHTML += `\n<pre>Rate limit handling error for @jfcarpio: ${error.message}. Check console for details.</pre>`;
+      errorDiv.innerHTML += `\n<pre>Rate limit handling error for @jfcarpio (v${APP_VERSION}): ${error.message}. Check console for details.</pre>`;
     } else {
-      console.log(`%cRate limit handling error for @jfcarpio: ${error.message}`, 'color: red; font-weight: bold;');
+      console.log(`%cRate limit handling error for @jfcarpio (v${APP_VERSION}): ${error.message}`, 'color: red; font-weight: bold;');
     }
     throw error;
   }
@@ -573,7 +612,7 @@ async function handleRateLimits(response) {
  */
 function updateProgress(current, total, found) {
   document.getElementById('progress').innerText = 
-    `Processed ${current} of ${total} non-mutuals for @jfcarpio. Found ${found} inactive users.`;
+    `Processed ${current} of ${total} non-mutuals for @jfcarpio (v${APP_VERSION}). Found ${found} inactive users.`;
 }
 
 /**
@@ -584,10 +623,10 @@ function updateProgress(current, total, found) {
 function displayResults(users, userId) {
   const resultsDiv = document.getElementById('results');
   if (users.length === 0) {
-    resultsDiv.innerHTML = '<p class="no-results">No inactive non-mutuals found for @jfcarpio (ID: ' + userId + ').</p>';
+    resultsDiv.innerHTML = `<p class="no-results">No inactive non-mutuals found for @jfcarpio (ID: ${userId}, v${APP_VERSION}).</p>`;
   } else {
     resultsDiv.innerHTML = `
-      <h2>Inactive Non-Mutual Follows for @jfcarpio</h2>
+      <h2>Inactive Non-Mutual Follows for @jfcarpio (v${APP_VERSION})</h2>
       <table class="results-table">
         <thead>
           <tr>
@@ -649,13 +688,13 @@ async function generateCodeChallenge(codeVerifier) {
 
 // Test cases (commented for future implementation)
 /*
-  test('findInactiveNonMutuals should authenticate with X or access token and fetch data reliably for @jfcarpio', async () => {
+  test('findInactiveNonMutuals should authenticate with X or access token and fetch data reliably for @jfcarpio (v1.11)', async () => {
     // Mock fetch with X API responses for @jfcarpio, including rate limits and errors
   });
-  test('initiateAuthFlowWithRetries should handle already logged-in state and succeed for @jfcarpio', async () => {
+  test('initiateAuthFlowWithRetries should handle already logged-in state and succeed for @jfcarpio (v1.11)', async () => {
     // Mock window.open, location.href, and X API responses
   });
-  test('fetchWithRetry should handle multiple failures and succeed for @jfcarpio', async () => {
+  test('fetchWithRetry should handle multiple failures and succeed for @jfcarpio (v1.11)', async () => {
     // Mock fetch with various error scenarios and retries
   });
 */
@@ -665,14 +704,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const startButton = document.getElementById('startButton');
   if (startButton) {
     startButton.addEventListener('click', findInactiveNonMutuals);
-    console.log('Event listener attached successfully for @jfcarpio.');
+    console.log(`Event listener attached successfully for @jfcarpio (v${APP_VERSION}).`);
   } else {
-    console.error('Start button not found for @jfcarpio. Check index.html.');
+    console.error(`Start button not found for @jfcarpio (v${APP_VERSION}). Check index.html.`);
     const errorDiv = document.getElementById('error');
     if (errorDiv) {
-      errorDiv.innerHTML = '<p class="error">Error: Button not found. Please refresh and check console for details.</p>';
+      errorDiv.innerHTML = `<p class="error">Error: Button not found (v${APP_VERSION}). Please refresh and check console for details.</p>`;
     } else {
-      console.log('%cError: errorDiv not found. Please ensure index.html includes <div id="error">.', 'color: red; font-weight: bold;');
+      console.log(`%cError: errorDiv not found for @jfcarpio (v${APP_VERSION}). Please ensure index.html includes <div id="error">.`, 'color: red; font-weight: bold;');
     }
+    if (versionDiv) versionDiv.innerText = `Version: ${APP_VERSION} (Status: Failed)`;
   }
 });
