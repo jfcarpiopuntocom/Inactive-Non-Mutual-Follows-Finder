@@ -1,16 +1,24 @@
 // Constants for clarity and maintainability
 const X_API_BASE = 'https://api.twitter.com/2';
 const ACCESS_TOKEN = '11859152-XTKsuXYZkqAd0djHHqRfmnMaiN3n6rcOgMmLjyLY8'; // Your provided X access token
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5; // Increased retries for robustness
 const RETRY_DELAY_BASE = 2000; // 2 seconds initial delay for exponential backoff
 
-// Main function to find inactive non-mutuals for @jfcarpio using access token
+// Main function to find inactive non-mutuals for @jfcarpio using access token with enhanced failsafes
 async function findInactiveNonMutuals() {
   const startButton = document.getElementById('startButton');
   const progressDiv = document.getElementById('progress');
   const resultsDiv = document.getElementById('results');
   const errorDiv = document.getElementById('error');
   const loadingDiv = document.getElementById('loading');
+
+  // Ensure button and DOM elements exist (double-check)
+  if (!startButton || !progressDiv || !resultsDiv || !errorDiv || !loadingDiv) {
+    console.error('DOM elements missing for @jfcarpio app. Check index.html.');
+    errorDiv.innerHTML = '<p class="error">Error: App initialization failed. Please refresh and check console for details.</p>';
+    startButton.disabled = false;
+    return;
+  }
 
   // Reset UI state
   startButton.disabled = true;
@@ -21,11 +29,11 @@ async function findInactiveNonMutuals() {
   loadingDiv.style.display = 'block';
 
   try {
-    // Step 1: Verify access token belongs to @jfcarpio
+    // Step 1: Verify access token belongs to @jfcarpio with enhanced validation
     console.log('Verifying access token for @jfcarpio...');
-    const userDetails = await fetchUserDetails(ACCESS_TOKEN);
+    const userDetails = await fetchUserDetailsWithRetries(ACCESS_TOKEN);
     if (userDetails.username !== 'jfcarpio') {
-      throw new Error('This access token does not belong to @jfcarpio. Please provide the correct token for your X account.');
+      throw new Error('This access token does not belong to @jfcarpio. Please provide the correct token for your X account or regenerate via the X Developer Portal.');
     }
     console.log('Verified access token belongs to @jfcarpio:', userDetails.username);
     progressDiv.innerHTML = `Authenticated as: @${userDetails.username} (using access token)`;
@@ -38,12 +46,12 @@ async function findInactiveNonMutuals() {
     // Step 3: Fetch follows and followers for @jfcarpio
     progressDiv.innerHTML = 'Fetching follows for @jfcarpio...';
     console.log('Fetching follows for @jfcarpio...');
-    const follows = await getAllFollows(userId, ACCESS_TOKEN);
+    const follows = await getAllFollowsWithRetries(userId, ACCESS_TOKEN);
     console.log('Follows for @jfcarpio fetched:', follows.length);
 
     progressDiv.innerHTML = 'Fetching followers for @jfcarpio...';
     console.log('Fetching followers for @jfcarpio...');
-    const followers = await getAllFollowers(userId, ACCESS_TOKEN);
+    const followers = await getAllFollowersWithRetries(userId, ACCESS_TOKEN);
     console.log('Followers for @jfcarpio fetched:', followers.length);
 
     // Step 4: Identify non-mutuals for @jfcarpio
@@ -64,7 +72,7 @@ async function findInactiveNonMutuals() {
       const user = nonMutuals[i];
       try {
         console.log(`Checking user ${user.id} (${user.username}) for @jfcarpio...`);
-        const tweets = await getRecentTweets(user.id, startTime, ACCESS_TOKEN);
+        const tweets = await getRecentTweetsWithRetries(user.id, startTime, ACCESS_TOKEN);
         if (tweets.meta.result_count === 0) {
           inactiveNonMutuals.push(user);
           console.log(`User ${user.id} (${user.username}) is inactive for @jfcarpio.`);
@@ -85,8 +93,8 @@ async function findInactiveNonMutuals() {
   } catch (error) {
     console.error('Error in findInactiveNonMutuals for @jfcarpio:', error);
     errorDiv.innerHTML = `<p class="error">Critical Error for @jfcarpio: ${error.message}. Check the console for detailed bug report, including stack trace and error context.</p>`;
-    // Retry automatically if it’s a token or API-related error
-    if (error.message.includes('token') || error.message.includes('access') || error.message.includes('HTTP')) {
+    // Retry automatically if it’s a token, API, or network-related error
+    if (error.message.includes('token') || error.message.includes('access') || error.message.includes('HTTP') || error.message.includes('network')) {
       console.log('Attempting to retry automatically for @jfcarpio...');
       setTimeout(() => findInactiveNonMutuals(), RETRY_DELAY_BASE); // Retry after 2 seconds
     }
@@ -98,33 +106,23 @@ async function findInactiveNonMutuals() {
 }
 
 /**
- * Fetches user details to verify @jfcarpio using the access token.
+ * Fetches user details to verify @jfcarpio using the access token with retries.
  * @param {string} accessToken - The access token
  * @returns {Promise<Object>} User details
  */
-async function fetchUserDetails(accessToken) {
-  try {
-    const response = await fetch(`${X_API_BASE}/users/me?user.fields=username,name`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Failed to fetch user details for @jfcarpio: HTTP ${response.status} - ${errorText}`);
-    }
-    return await response.json().data;
-  } catch (error) {
-    console.error('Error in fetchUserDetails for @jfcarpio:', error);
-    throw error;
-  }
+async function fetchUserDetailsWithRetries(accessToken) {
+  return await fetchWithRetry(`${X_API_BASE}/users/me?user.fields=username,name`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  }).then(response => response.json().data);
 }
 
 /**
- * Fetches all follows with pagination for @jfcarpio.
+ * Fetches all follows with pagination for @jfcarpio with retries.
  * @param {string} userId - The user ID
  * @param {string} accessToken - The access token
  * @returns {Promise<Array>} List of follows
  */
-async function getAllFollows(userId, accessToken) {
+async function getAllFollowsWithRetries(userId, accessToken) {
   let follows = [];
   let nextToken = null;
   do {
@@ -146,12 +144,12 @@ async function getAllFollows(userId, accessToken) {
 }
 
 /**
- * Fetches all followers with pagination for @jfcarpio.
+ * Fetches all followers with pagination for @jfcarpio with retries.
  * @param {string} userId - The user ID
  * @param {string} accessToken - The access token
  * @returns {Promise<Array>} List of followers
  */
-async function getAllFollowers(userId, accessToken) {
+async function getAllFollowersWithRetries(userId, accessToken) {
   let followers = [];
   let nextToken = null;
   do {
@@ -173,27 +171,21 @@ async function getAllFollowers(userId, accessToken) {
 }
 
 /**
- * Fetches recent tweets for a user for @jfcarpio.
+ * Fetches recent tweets for a user for @jfcarpio with retries.
  * @param {string} userId - The user ID
  * @param {string} startTime - The start time for tweets
  * @param {string} accessToken - The access token
  * @returns {Promise<Object>} Tweets response
  */
-async function getRecentTweets(userId, startTime, accessToken) {
-  try {
-    const url = `${X_API_BASE}/users/${userId}/tweets?max_results=1&start_time=${startTime}&tweet.fields=created_at`;
-    const response = await fetchWithRetry(url, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    return await response.json();
-  } catch (error) {
-    console.error(`Error in getRecentTweets for user ${userId} for @jfcarpio:`, error);
-    throw error;
-  }
+async function getRecentTweetsWithRetries(userId, startTime, accessToken) {
+  const url = `${X_API_BASE}/users/${userId}/tweets?max_results=1&start_time=${startTime}&tweet.fields=created_at`;
+  return await fetchWithRetry(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  }).then(response => response.json());
 }
 
 /**
- * Performs a fetch with retry logic for @jfcarpio.
+ * Performs a fetch with retry logic for @jfcarpio with enhanced failsafes.
  * @param {string} url - The URL to fetch
  * @param {Object} options - Fetch options
  * @returns {Promise<Response>} Fetch response
@@ -219,7 +211,7 @@ async function fetchWithRetry(url, options) {
 }
 
 /**
- * Handles rate limits for X API calls for @jfcarpio with failsafes.
+ * Handles rate limits for X API calls for @jfcarpio with enhanced failsafes.
  * @param {Response} response - The fetch response
  */
 async function handleRateLimits(response) {
@@ -290,16 +282,25 @@ function displayResults(users, userId) {
 
 // Test cases (commented for future implementation)
 /*
-  test('findInactiveNonMutuals should use access token and fetch data for @jfcarpio', async () => {
-    // Mock fetch with X API responses for @jfcarpio
+  test('findInactiveNonMutuals should use access token and fetch data reliably for @jfcarpio', async () => {
+    // Mock fetch with X API responses for @jfcarpio, including rate limits and errors
   });
-  test('fetchWithRetry should retry on API failures for @jfcarpio', async () => {
-    // Mock fetch with rate limit errors and X API responses
+  test('fetchWithRetry should handle multiple failures and succeed for @jfcarpio', async () => {
+    // Mock fetch with various error scenarios and retries
   });
   test('handleRateLimits should adjust delays based on X rate limits for @jfcarpio', async () => {
-    // Mock response headers with various rate limit scenarios
+    // Mock response headers with different rate limit scenarios
   });
 */
 
-// Event listener for @jfcarpio
-document.getElementById('startButton').addEventListener('click', findInactiveNonMutuals);
+// Ensure event listener attaches after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const startButton = document.getElementById('startButton');
+  if (startButton) {
+    startButton.addEventListener('click', findInactiveNonMutuals);
+    console.log('Event listener attached successfully for @jfcarpio.');
+  } else {
+    console.error('Start button not found for @jfcarpio. Check index.html.');
+    document.getElementById('error').innerHTML = '<p class="error">Error: Button not found. Please refresh and check console for details.</p>';
+  }
+});
