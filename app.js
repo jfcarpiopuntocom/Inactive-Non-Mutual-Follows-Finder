@@ -1,9 +1,11 @@
 // Constants for clarity and maintainability
 const X_API_BASE = 'https://api.twitter.com/2';
-const CLIENT_ID = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app client ID (verify in X Developer Portal)
-const REDIRECT_URI = 'https://yourgithubusername.github.io/inactive-follows/callback'; // Replace with your GitHub Pages URL
+const CLIENT_ID = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app client ID (verified)
+const REDIRECT_URI = 'https://jfcarpiopuntocom.github.io/Inactive-Non-Mutual-Follows-Finder/callback'; // Your live GitHub Pages URL
+const MAX_RETRIES = 3;
+const RETRY_DELAY_BASE = 2000; // 2 seconds initial delay for exponential backoff
 
-// Main function to find inactive non-mutuals for @jfcarpio
+// Main function to find inactive non-mutuals for @jfcarpio with failsafes
 async function findInactiveNonMutuals() {
   const startButton = document.getElementById('startButton');
   const retryButton = document.getElementById('retryButton');
@@ -28,16 +30,24 @@ async function findInactiveNonMutuals() {
   instructionsDiv.style.display = 'block';
 
   try {
-    // Step 1: Initiate OAuth 2.0 PKCE authentication flow for @jfcarpio
-    console.log('Starting X authentication for @jfcarpio (handling already logged-in state)...');
-    authCode = await initiateAuthFlow();
+    // Step 1: Validate client ID before proceeding
+    console.log('Validating client ID for @jfcarpio...');
+    const isClientIdValid = await validateClientId();
+    if (!isClientIdValid) {
+      throw new Error('Invalid client ID for @jfcarpio. Please verify your X app credentials in the X Developer Portal and update CLIENT_ID in app.js.');
+    }
+    console.log('Client ID validated for @jfcarpio.');
+
+    // Step 2: Initiate OAuth 2.0 PKCE authentication flow for @jfcarpio, handling already logged-in state
+    console.log('Starting X authentication for @jfcarpio (reconfirming even if already logged in)...');
+    authCode = await initiateAuthFlowWithRetries();
     console.log('Authorization code obtained for @jfcarpio:', authCode);
 
-    // Step 2: Exchange code for access token with failsafes
-    const accessToken = await exchangeCodeForToken(authCode);
+    // Step 3: Exchange code for access token with failsafes
+    const accessToken = await exchangeCodeForTokenWithRetries(authCode);
     console.log('Successfully authenticated with X for @jfcarpio. Access token:', accessToken);
 
-    // Step 3: Fetch and verify user ID for @jfcarpio
+    // Step 4: Fetch and verify user ID for @jfcarpio
     console.log('Fetching user ID for @jfcarpio...');
     const userId = await getUserId(accessToken);
     console.log('User ID for @jfcarpio obtained:', userId);
@@ -51,7 +61,7 @@ async function findInactiveNonMutuals() {
     console.log('Verified X account: @jfcarpio (reconfirmed)');
     progressDiv.innerHTML = `Authenticated as: @${userDetails.username} (reconfirmed)`;
 
-    // Step 4: Fetch follows and followers for @jfcarpio
+    // Step 5: Fetch follows and followers for @jfcarpio
     progressDiv.innerHTML = 'Fetching follows for @jfcarpio...';
     console.log('Fetching follows for @jfcarpio...');
     const follows = await getAllFollows(userId, accessToken);
@@ -62,13 +72,13 @@ async function findInactiveNonMutuals() {
     const followers = await getAllFollowers(userId, accessToken);
     console.log('Followers for @jfcarpio fetched:', followers.length);
 
-    // Step 5: Identify non-mutuals for @jfcarpio
+    // Step 6: Identify non-mutuals for @jfcarpio
     console.log('Identifying non-mutuals for @jfcarpio...');
     const followerIds = new Set(followers.map(follower => follower.id));
     const nonMutuals = follows.filter(follow => !followerIds.has(follow.id));
     console.log('Non-mutuals for @jfcarpio identified:', nonMutuals.length);
 
-    // Step 6: Check inactivity for non-mutuals (expanded scope)
+    // Step 7: Check inactivity for non-mutuals (expanded scope)
     const inactiveNonMutuals = [];
     const fourMonthsAgo = new Date();
     fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4);
@@ -95,7 +105,7 @@ async function findInactiveNonMutuals() {
       await handleRateLimits();
     }
 
-    // Step 7: Display results professionally for @jfcarpio
+    // Step 8: Display results professionally for @jfcarpio
     console.log('Displaying results for @jfcarpio...');
     displayResults(inactiveNonMutuals, userId);
   } catch (error) {
@@ -103,9 +113,9 @@ async function findInactiveNonMutuals() {
     errorDiv.innerHTML = `<p class="error">Critical Error for @jfcarpio: ${error.message}. Check the console for detailed bug report, including stack trace and error context.</p>`;
     retryButton.style.display = 'block';
     // Retry authentication automatically if it’s an authentication-related error
-    if (error.message.includes('Authentication') || error.message.includes('token')) {
-      console.log('Attempting to retry authentication automatically...');
-      setTimeout(() => findInactiveNonMutuals(), 2000); // Retry after 2 seconds
+    if (error.message.includes('Authentication') || error.message.includes('token') || error.message.includes('access') || error.message.includes('client')) {
+      console.log('Attempting to retry authentication automatically for @jfcarpio...');
+      setTimeout(() => findInactiveNonMutuals(), RETRY_DELAY_BASE); // Retry after 2 seconds
     }
   } finally {
     startButton.disabled = false;
@@ -116,45 +126,79 @@ async function findInactiveNonMutuals() {
 }
 
 /**
- * Initiates OAuth 2.0 PKCE authentication flow for @jfcarpio, handling already logged-in state.
- * @returns {Promise<string>} Authorization code
+ * Validates the client ID against X API to ensure it’s correct for @jfcarpio.
+ * @returns {Promise<boolean>} Whether the client ID is valid
  */
-async function initiateAuthFlow() {
-  const state = generateRandomString(16); // CSRF protection
-  const codeVerifier = generateCodeVerifier();
-  const codeChallenge = await generateCodeChallenge(codeVerifier);
-
-  // Use prompt=login to force reconfirmation, even if already logged in
-  const authUrl = `${X_API_BASE}/oauth2/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=tweet.read%20users.read%20follows.read&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256&prompt=login`;
-  console.log('Redirecting to X for authentication (reconfirming @jfcarpio). Open this URL:', authUrl);
-
-  let authWindow;
+async function validateClientId() {
   try {
-    authWindow = window.open(authUrl, '_blank', 'width=600,height=600');
-    if (!authWindow) throw new Error('Popup blocked. Please open this URL manually:', authUrl);
+    const response = await fetch(`${X_API_BASE}/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `grant_type=client_credentials&client_id=${CLIENT_ID}`
+    });
+    if (!response.ok) {
+      console.warn('Client ID validation failed for @jfcarpio:', await response.text());
+      return false;
+    }
+    return true;
   } catch (error) {
-    console.error('Popup error for @jfcarpio:', error);
-    errorDiv.innerHTML = `<p class="error">Popup blocked or failed. Please open this URL manually: <a href="${authUrl}" target="_blank">${authUrl}</a>, authorize with @jfcarpio, then paste the callback URL below.</p>`;
-    return await getAuthCodeManually(REDIRECT_URI, state);
+    console.error('Error validating client ID for @jfcarpio:', error);
+    return false;
   }
-
-  return await pollForCallback(authWindow, REDIRECT_URI, state);
 }
 
 /**
- * Polls for the callback URL in the authentication window, handling already logged-in state.
+ * Initiates OAuth 2.0 PKCE authentication flow for @jfcarpio, handling already logged-in state with retries.
+ * @returns {Promise<string>} Authorization code
+ */
+async function initiateAuthFlowWithRetries() {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const state = generateRandomString(16); // CSRF protection
+      const codeVerifier = generateCodeVerifier();
+      const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+      // Use prompt=login to force reconfirmation, even if already logged in, with fallback
+      const authUrl = `${X_API_BASE}/oauth2/authorize?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=tweet.read%20users.read%20follows.read&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256&prompt=login`;
+      console.log(`Attempt ${attempt}/${MAX_RETRIES}: Redirecting to X for authentication (reconfirming @jfcarpio). Open this URL:`, authUrl);
+
+      let authWindow;
+      try {
+        authWindow = window.open(authUrl, '_blank', 'width=600,height=600');
+        if (!authWindow) throw new Error('Popup blocked. Please open this URL manually:', authUrl);
+      } catch (popupError) {
+        console.error('Popup error for @jfcarpio (Attempt ' + attempt + '):', popupError);
+        errorDiv.innerHTML = `<p class="error">Popup blocked or failed (Attempt ${attempt}). Please open this URL manually: <a href="${authUrl}" target="_blank">${authUrl}</a>, authorize with @jfcarpio, then paste the callback URL below.</p>`;
+        return await getAuthCodeManuallyWithRetries(REDIRECT_URI, state, attempt);
+      }
+
+      return await pollForCallbackWithRetries(authWindow, REDIRECT_URI, state, attempt);
+    } catch (error) {
+      console.error(`Authentication attempt ${attempt} failed for @jfcarpio:`, error);
+      if (attempt === MAX_RETRIES) throw new Error(`Authentication failed after ${MAX_RETRIES} retries for @jfcarpio: ${error.message}`);
+      const waitTime = RETRY_DELAY_BASE * Math.pow(2, attempt - 1); // Exponential backoff
+      console.log(`Retrying authentication for @jfcarpio in ${waitTime / 1000} seconds...`);
+      errorDiv.innerHTML = `<p class="error">Retrying authentication (attempt ${attempt + 1}/${MAX_RETRIES}) for @jfcarpio: ${error.message}. Check console for details.</p>`;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+  }
+}
+
+/**
+ * Polls for the callback URL in the authentication window, handling already logged-in state with retries.
  * @param {Window} authWindow - The authentication window
  * @param {string} redirectUri - The redirect URI
  * @param {string} state - CSRF state
+ * @param {number} attempt - Current retry attempt
  * @returns {Promise<string>} Authorization code
  */
-async function pollForCallback(authWindow, redirectUri, state) {
+async function pollForCallbackWithRetries(authWindow, redirectUri, state, attempt) {
   return new Promise((resolve, reject) => {
     let checkInterval = setInterval(async () => {
       try {
         if (authWindow.closed) {
           clearInterval(checkInterval);
-          reject(new Error('Authentication window closed unexpectedly for @jfcarpio. Please retry.'));
+          reject(new Error('Authentication window closed unexpectedly for @jfcarpio (Attempt ' + attempt + '). Please retry.'));
           return;
         }
         const url = authWindow.location.href;
@@ -164,8 +208,8 @@ async function pollForCallback(authWindow, redirectUri, state) {
           const params = new URLSearchParams(url.split('?')[1]);
           const code = params.get('code');
           const returnedState = params.get('state');
-          if (!code) reject(new Error('No authorization code found in callback URL for @jfcarpio'));
-          if (returnedState !== state) reject(new Error('CSRF state mismatch detected for @jfcarpio'));
+          if (!code) reject(new Error('No authorization code found in callback URL for @jfcarpio (Attempt ' + attempt + ')'));
+          if (returnedState !== state) reject(new Error('CSRF state mismatch detected for @jfcarpio (Attempt ' + attempt + ')'));
           resolve(code);
         }
       } catch (e) {
@@ -176,35 +220,36 @@ async function pollForCallback(authWindow, redirectUri, state) {
     setTimeout(() => {
       clearInterval(checkInterval);
       authWindow.close();
-      reject(new Error('Authentication timed out after 5 minutes for @jfcarpio. Please retry.'));
+      reject(new Error('Authentication timed out after 5 minutes for @jfcarpio (Attempt ' + attempt + '). Please retry.'));
     }, 300000); // 5-minute timeout
   });
 }
 
 /**
- * Manual fallback for authentication, handling user input for callback URL.
+ * Manual fallback for authentication with retries, handling user input for callback URL.
  * @param {string} redirectUri - The redirect URI
  * @param {string} state - CSRF state
+ * @param {number} attempt - Current retry attempt
  * @returns {Promise<string>} Authorization code
  */
-async function getAuthCodeManually(redirectUri, state) {
-  return new Promise((resolve, callbackInput, reject) => {
+async function getAuthCodeManuallyWithRetries(redirectUri, state, attempt) {
+  return new Promise((resolve, reject) => {
     submitCallbackButton.onclick = async () => {
       const callbackUrl = callbackInput.value.trim();
       if (!callbackUrl) {
-        errorDiv.innerHTML = '<p class="error">Please paste the callback URL from X for @jfcarpio.</p>';
+        errorDiv.innerHTML = '<p class="error">Please paste the callback URL from X for @jfcarpio (Attempt ' + attempt + ').</p>';
         return;
       }
       try {
         const params = new URLSearchParams(new URL(callbackUrl).search);
         const code = params.get('code');
         const returnedState = params.get('state');
-        if (!code) throw new Error('No authorization code found in callback URL for @jfcarpio');
-        if (returnedState !== state) throw new Error('CSRF state mismatch detected for @jfcarpio');
+        if (!code) throw new Error('No authorization code found in callback URL for @jfcarpio (Attempt ' + attempt + ')');
+        if (returnedState !== state) throw new Error('CSRF state mismatch detected for @jfcarpio (Attempt ' + attempt + ')');
         resolve(code);
       } catch (error) {
-        console.error('Error parsing callback URL for @jfcarpio:', error);
-        errorDiv.innerHTML = `<p class="error">Invalid callback URL for @jfcarpio: ${error.message}. Please ensure you copied the full URL from X after authentication.</p>`;
+        console.error('Error parsing callback URL for @jfcarpio (Attempt ' + attempt + '):', error);
+        errorDiv.innerHTML = `<p class="error">Invalid callback URL for @jfcarpio (Attempt ${attempt}): ${error.message}. Please ensure you copied the full URL from X after authentication.</p>`;
         reject(error);
       }
     };
@@ -212,15 +257,15 @@ async function getAuthCodeManually(redirectUri, state) {
 }
 
 /**
- * Exchanges authorization code for access token with failsafes for @jfcarpio.
+ * Exchanges authorization code for access token with failsafes and retries for @jfcarpio.
  * @param {string} authCode - The authorization code
  * @returns {Promise<string>} Access token
  */
-async function exchangeCodeForToken(authCode) {
+async function exchangeCodeForTokenWithRetries(authCode) {
   const codeVerifier = sessionStorage.getItem('codeVerifier');
   if (!codeVerifier) throw new Error('Code verifier not found for @jfcarpio. Please restart authentication.');
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const tokenResponse = await fetch(`${X_API_BASE}/oauth2/token`, {
         method: 'POST',
@@ -235,11 +280,11 @@ async function exchangeCodeForToken(authCode) {
       return tokenData.access_token;
     } catch (error) {
       console.error(`Token exchange attempt ${attempt} failed for @jfcarpio:`, error);
-      if (attempt === 3) throw error;
-      const waitTime = 2000 * attempt; // Exponential backoff
+      if (attempt === MAX_RETRIES) throw error;
+      const waitTime = RETRY_DELAY_BASE * Math.pow(2, attempt - 1); // Exponential backoff
       console.log(`Retrying token exchange for @jfcarpio in ${waitTime / 1000} seconds...`);
+      errorDiv.innerHTML = `<p class="error">Retrying token exchange (attempt ${attempt + 1}/${MAX_RETRIES}) for @jfcarpio: ${error.message}. Check console for details.</p>`;
       await new Promise(resolve => setTimeout(resolve, waitTime));
-      errorDiv.innerHTML = `<p class="error">Retrying token exchange (attempt ${attempt + 1}/3) for @jfcarpio: ${error.message}. Check console for details.</p>`;
     }
   }
 }
@@ -333,7 +378,7 @@ async function getAllFollowers(userId, accessToken) {
         throw new Error(`Failed to fetch followers for @jfcarpio: HTTP ${response.status} - ${errorText}`);
       }
       const data = await response.json();
-      followers = follows.concat(data.data || []);
+      followers = followers.concat(data.data || []);
       nextToken = data.meta.next_token;
       await handleRateLimits(response);
     } catch (error) {
@@ -369,7 +414,7 @@ async function getRecentTweets(userId, startTime, accessToken) {
 }
 
 /**
- * Handles rate limits for X API calls for @jfcarpio.
+ * Handles rate limits for X API calls for @jfcarpio with failsafes.
  * @param {Response} response - The fetch response
  */
 async function handleRateLimits(response) {
@@ -456,34 +501,4 @@ function generateRandomString(length) {
 function generateCodeVerifier() {
   const verifier = generateRandomString(43); // Minimum length per RFC 7636
   sessionStorage.setItem('codeVerifier', verifier); // Securely store in session storage
-  return verifier;
-}
-
-/**
- * Generates a PKCE code challenge for @jfcarpio.
- * @param {string} codeVerifier - The code verifier
- * @returns {Promise<string>} Code challenge
- */
-async function generateCodeChallenge(codeVerifier) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(codeVerifier);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode(...new Uint8Array(hash)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-// Test cases (commented for future implementation)
-/*
-  test('initiateAuthFlow should handle already logged-in state and return auth code', async () => {
-    // Mock window.open, location.href, and X API responses
-  });
-  test('exchangeCodeForToken should retry on failure and succeed with PKCE', async () => {
-    // Mock fetch with rate limit errors and X API responses
-  });
-  test('handleRateLimits should dynamically adjust based on X rate limits', async () => {
-    // Mock response headers with various rate limit scenarios
-  });
-*/
-
-// Event listener for @jfcarpio
-document.getElementById('startButton').addEventListener('click', findInactiveNonMutuals);
+  return verifier
