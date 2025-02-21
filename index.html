@@ -114,13 +114,13 @@
 </head>
 <body>
   <h1>Inactive Non-Mutual Follows Finder for @jfcarpio</h1>
-  <p>Click below to find up to 3,000 people you follow on X (@jfcarpio) who haven’t tweeted in over 4 months and don’t follow you back. You’ll authenticate with X first, even if already logged in.</p>
+  <p>Click below to find up to 3,000 people you follow on X (@jfcarpio) who haven’t tweeted in over 4 months and don’t follow you back. You’ll authenticate with X first, even if already logged in, or use your access token if provided.</p>
   <button id="startButton">Authenticate with X and Find Inactive Non-Mutuals</button>
   <button id="retryButton" onclick="findInactiveNonMutuals()">Retry Authentication</button>
   <div id="progress"></div>
   <div id="loading"><div class="loading-spinner"></div> Loading...</div>
   <div id="results"></div>
-  <div id="error"></div>
+  <div id="error"></div> <!-- Confirmed this exists -->
   <div id="instructions">
     <h3>Authentication Instructions for @jfcarpio (Failsafe)</h3>
     <p>1. A new browser window or tab will open to authenticate with X. If already logged into X, confirm access with @jfcarpio or log in again.</p>
