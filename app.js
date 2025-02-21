@@ -5,22 +5,32 @@ async function findInactiveNonMutuals() {
   const resultsDiv = document.getElementById('results');
   const errorDiv = document.getElementById('error');
   const loadingDiv = document.getElementById('loading');
+  const instructionsDiv = document.getElementById('instructions');
+  const callbackInput = document.getElementById('callbackUrl');
+  const submitCallbackButton = document.getElementById('submitCallback');
+
+  let authCode = null;
+
+  // Reset UI
+  startButton.disabled = true;
+  startButton.innerText = 'Authenticating with X...';
+  progressDiv.innerHTML = '';
+  resultsDiv.innerHTML = '';
+  errorDiv.innerHTML = '';
+  loadingDiv.style.display = 'block';
+  instructionsDiv.style.display = 'block';
 
   try {
-    // Reset UI
-    startButton.disabled = true;
-    startButton.innerText = 'Authenticating with X...';
-    progressDiv.innerHTML = '';
-    resultsDiv.innerHTML = '';
-    errorDiv.innerHTML = '';
-    loadingDiv.style.display = 'block';
-
     // Step 1: Authenticate with X using OAuth 2.0 PKCE for @jfcarpio
     console.log('Starting X authentication for @jfcarpio...');
-    const accessToken = await getAccessToken();
+    authCode = await initiateAuthFlow();
+    console.log('Authorization code obtained for @jfcarpio:', authCode);
+
+    // Step 2: Exchange code for access token
+    const accessToken = await exchangeCodeForToken(authCode);
     console.log('Successfully authenticated with X for @jfcarpio. Access token:', accessToken);
 
-    // Step 2: Fetch your user ID (for @jfcarpio)
+    // Step 3: Fetch your user ID (for @jfcarpio)
     console.log('Fetching user ID for @jfcarpio...');
     const userId = await getUserId(accessToken);
     console.log('User ID for @jfcarpio obtained:', userId);
@@ -34,7 +44,7 @@ async function findInactiveNonMutuals() {
     console.log('Verified X account: @jfcarpio');
     progressDiv.innerHTML = `Authenticated as: @${userDetails.username}`;
 
-    // Step 3: Fetch follows and followers for @jfcarpio
+    // Step 4: Fetch follows and followers for @jfcarpio
     progressDiv.innerHTML = 'Fetching follows for @jfcarpio...';
     console.log('Fetching follows for @jfcarpio...');
     const follows = await getAllFollows(userId, accessToken);
@@ -45,13 +55,13 @@ async function findInactiveNonMutuals() {
     const followers = await getAllFollowers(userId, accessToken);
     console.log('Followers for @jfcarpio fetched:', followers.length);
 
-    // Step 4: Identify non-mutuals for @jfcarpio
+    // Step 5: Identify non-mutuals for @jfcarpio
     console.log('Identifying non-mutuals for @jfcarpio...');
     const followerIds = new Set(followers.map(follower => follower.id));
     const nonMutuals = follows.filter(follow => !followerIds.has(follow.id));
     console.log('Non-mutuals for @jfcarpio identified:', nonMutuals.length);
 
-    // Step 5: Check inactivity for non-mutuals (expanded scope)
+    // Step 6: Check inactivity for non-mutuals (expanded scope)
     const inactiveNonMutuals = [];
     const fourMonthsAgo = new Date();
     fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4);
@@ -72,100 +82,145 @@ async function findInactiveNonMutuals() {
         }
       } catch (error) {
         console.error(`Error checking user ${user.id} (${user.username}) for @jfcarpio:`, error);
-        // Skip problematic users
+        // Skip problematic users with a warning
+        errorDiv.innerHTML += `<p class="error">Warning: Skipped user ${user.username} (ID: ${user.id}) due to error - ${error.message}. Check console for details.</p>`;
       }
       updateProgress(i + 1, nonMutuals.length, inactiveNonMutuals.length);
       await handleRateLimits();
     }
 
-    // Step 6: Display results professionally for @jfcarpio
+    // Step 7: Display results professionally for @jfcarpio
     console.log('Displaying results for @jfcarpio...');
     displayResults(inactiveNonMutuals, userId);
   } catch (error) {
     console.error('Error in findInactiveNonMutuals for @jfcarpio:', error);
-    errorDiv.innerHTML = `<p class="error">Error for @jfcarpio: ${error.message}. Check the console for detailed bug report, including stack trace and error context.</p>`;
+    errorDiv.innerHTML = `<p class="error">Critical Error for @jfcarpio: ${error.message}. Check the console for detailed bug report, including stack trace and error context.</p>`;
+    // Retry authentication if it failed
+    if (error.message.includes('Authentication') || error.message.includes('token')) {
+      console.log('Attempting to retry authentication...');
+      startButton.disabled = false;
+      startButton.innerText = 'Retry Authentication with X';
+      return;
+    }
   } finally {
     startButton.disabled = false;
     startButton.innerText = 'Authenticate with X and Find Inactive Non-Mutuals';
     loadingDiv.style.display = 'none';
+    instructionsDiv.style.display = 'none';
   }
 }
 
-// Authenticate with X using OAuth 2.0 PKCE for @jfcarpio
-async function getAccessToken() {
+// Initiate OAuth 2.0 PKCE authentication flow for @jfcarpio
+async function initiateAuthFlow() {
+  const clientId = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app client ID
+  const redirectUri = 'https://yourgithubusername.github.io/inactive-follows/callback'; // Replace with your GitHub Pages URL
+  const state = generateRandomString(16); // CSRF protection
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+  // Build authorization URL
+  const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=tweet.read%20users.read%20follows.read&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+  console.log('Redirecting to X for authentication. Open this URL:', authUrl);
+
+  // Open in a new window with fallback
+  let authWindow;
   try {
-    // Generate code verifier and challenge for PKCE
-    const codeVerifier = generateCodeVerifier();
-    const codeChallenge = await generateCodeChallenge(codeVerifier);
-
-    // X app credentials (replace with your values from X Developer Portal)
-    const clientId = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your provided API key (verify if this is the client ID)
-    const redirectUri = 'https://yourgithubusername.github.io/inactive-follows/callback'; // Replace with your GitHub Pages URL
-
-    // Redirect to X authorization URL
-    const authUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=tweet.read%20users.read%20follows.read&state=state&code_challenge=${codeChallenge}&code_challenge_method=S256`;
-    console.log('Redirecting to X for authentication. Open this URL in your browser:', authUrl);
-
-    // Open the auth URL in a new window
-    const authWindow = window.open(authUrl, '_blank', 'width=600,height=600');
-    if (!authWindow) throw new Error('Failed to open authentication window. Please allow popups or open the URL manually.');
-
-    // Wait for the callback (simplified for GitHub Pages—user must copy the URL)
-    let authCode = await new Promise((resolve, reject) => {
-      const checkCallback = setInterval(() => {
-        try {
-          const url = authWindow.location.href;
-          if (url && url.includes(redirectUri)) {
-            authWindow.close();
-            clearInterval(checkCallback);
-            const params = new URLSearchParams(url.split('?')[1]);
-            const code = params.get('code');
-            if (code) resolve(code);
-            else reject(new Error('No authorization code found in callback URL'));
-          }
-        } catch (e) {
-          // Ignore errors from accessing window.location (cross-origin)
-        }
-      }, 500);
-      setTimeout(() => {
-        clearInterval(checkCallback);
-        reject(new Error('Authentication timed out. Please try again.'));
-      }, 300000); // 5-minute timeout
-    });
-
-    // Exchange code for token
-    const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: `grant_type=authorization_code&code=${authCode}&redirect_uri=${encodeURIComponent(redirectUri)}&client_id=${clientId}&code_verifier=${codeVerifier}`
-    });
-    if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      throw new Error(`Failed to get access token for @jfcarpio: HTTP ${tokenResponse.status} - ${errorText}`);
-    }
-    const tokenData = await tokenResponse.json();
-    return tokenData.access_token;
+    authWindow = window.open(authUrl, '_blank', 'width=600,height=600');
+    if (!authWindow) throw new Error('Popup blocked. Please open this URL manually:', authUrl);
   } catch (error) {
-    console.error('Error in getAccessToken for @jfcarpio:', error);
-    throw new Error(`Authentication failed for @jfcarpio: ${error.message}`);
+    console.error('Popup error:', error);
+    errorDiv.innerHTML = `<p class="error">Popup blocked or failed. Please open this URL manually: <a href="${authUrl}" target="_blank">${authUrl}</a>, authorize, then paste the callback URL below.</p>`;
+    return await getAuthCodeManually(redirectUri, state);
   }
+
+  // Poll for callback (handle CORS and browser restrictions)
+  return await new Promise((resolve, reject) => {
+    let checkInterval = setInterval(async () => {
+      try {
+        if (authWindow.closed) {
+          clearInterval(checkInterval);
+          reject(new Error('Authentication window closed unexpectedly. Please retry.'));
+          return;
+        }
+        const url = authWindow.location.href;
+        if (url && url.includes(redirectUri)) {
+          authWindow.close();
+          clearInterval(checkInterval);
+          const params = new URLSearchParams(url.split('?')[1]);
+          const code = params.get('code');
+          const returnedState = params.get('state');
+          if (!code) reject(new Error('No authorization code found in callback URL'));
+          if (returnedState !== state) reject(new Error('CSRF state mismatch detected'));
+          resolve(code);
+        }
+      } catch (e) {
+        // Ignore cross-origin errors
+      }
+    }, 500);
+
+    setTimeout(() => {
+      clearInterval(checkInterval);
+      authWindow.close();
+      reject(new Error('Authentication timed out after 5 minutes. Please retry.'));
+    }, 300000); // 5-minute timeout
+  });
 }
 
-// Helper functions for PKCE
-function generateCodeVerifier() {
-  const array = new Uint32Array(56);
-  crypto.getRandomValues(array);
-  return Array.from(array, x => x.toString(36)).join('');
+// Manual fallback for authentication (user copies callback URL)
+async function getAuthCodeManually(redirectUri, state) {
+  return new Promise((resolve, reject) => {
+    submitCallbackButton.onclick = async () => {
+      const callbackUrl = callbackInput.value.trim();
+      if (!callbackUrl) {
+        errorDiv.innerHTML = '<p class="error">Please paste the callback URL from X.</p>';
+        return;
+      }
+      try {
+        const params = new URLSearchParams(new URL(callbackUrl).search);
+        const code = params.get('code');
+        const returnedState = params.get('state');
+        if (!code) throw new Error('No authorization code found in callback URL');
+        if (returnedState !== state) throw new Error('CSRF state mismatch detected');
+        resolve(code);
+      } catch (error) {
+        console.error('Error parsing callback URL:', error);
+        errorDiv.innerHTML = `<p class="error">Invalid callback URL: ${error.message}. Please ensure you copied the full URL from X after authentication.</p>`;
+        reject(error);
+      }
+    };
+  });
 }
 
-async function generateCodeChallenge(codeVerifier) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(codeVerifier);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode(...new Uint8Array(hash)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+// Exchange authorization code for access token for @jfcarpio
+async function exchangeCodeForToken(authCode) {
+  const clientId = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app client ID
+  const redirectUri = 'https://yourgithubusername.github.io/inactive-follows/callback'; // Replace with your GitHub Pages URL
+
+  // Get code verifier from storage (simulated here, should use secure storage)
+  const codeVerifier = sessionStorage.getItem('codeVerifier');
+  if (!codeVerifier) throw new Error('Code verifier not found. Please restart authentication.');
+
+  // Exchange code for token with retry logic
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const tokenResponse = await fetch('https://api.twitter.com/2/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `grant_type=authorization_code&code=${authCode}&redirect_uri=${encodeURIComponent(redirectUri)}&client_id=${clientId}&code_verifier=${codeVerifier}`
+      });
+      if (!tokenResponse.ok) {
+        const errorText = await tokenResponse.text();
+        throw new Error(`Token exchange failed: HTTP ${tokenResponse.status} - ${errorText}`);
+      }
+      const tokenData = await tokenResponse.json();
+      return tokenData.access_token;
+    } catch (error) {
+      console.error(`Token exchange attempt ${attempt} failed for @jfcarpio:`, error);
+      if (attempt === 3) throw error;
+      await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+      errorDiv.innerHTML = `<p class="error">Retrying token exchange (attempt ${attempt + 1}/3) for @jfcarpio: ${error.message}. Check console for details.</p>`;
+    }
+  }
 }
 
 // Fetch your user ID from the X API for @jfcarpio
@@ -207,11 +262,14 @@ async function getAllFollows(userId, accessToken) {
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
-      if (!response.ok) throw new Error(`Failed to fetch follows for @jfcarpio: HTTP ${response.status} - ${response.statusText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch follows for @jfcarpio: HTTP ${response.status} - ${errorText}`);
+      }
       const data = await response.json();
       follows = follows.concat(data.data || []);
       nextToken = data.meta.next_token;
-      await handleRateLimits();
+      await handleRateLimits(response);
     } catch (error) {
       console.error('Error in getAllFollows for @jfcarpio:', error);
       throw error;
@@ -230,11 +288,14 @@ async function getAllFollowers(userId, accessToken) {
       const response = await fetch(url, {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
-      if (!response.ok) throw new Error(`Failed to fetch followers for @jfcarpio: HTTP ${response.status} - ${response.statusText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch followers for @jfcarpio: HTTP ${response.status} - ${errorText}`);
+      }
       const data = await response.json();
       followers = followers.concat(data.data || []);
       nextToken = data.meta.next_token;
-      await handleRateLimits();
+      await handleRateLimits(response);
     } catch (error) {
       console.error('Error in getAllFollowers for @jfcarpio:', error);
       throw error;
@@ -250,7 +311,10 @@ async function getRecentTweets(userId, startTime, accessToken) {
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
-    if (!response.ok) throw new Error(`Failed to fetch tweets for user ${userId} for @jfcarpio: HTTP ${response.status} - ${response.statusText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to fetch tweets for user ${userId} for @jfcarpio: HTTP ${response.status} - ${errorText}`);
+    }
     return await response.json();
   } catch (error) {
     console.error(`Error in getRecentTweets for user ${userId} for @jfcarpio:`, error);
@@ -258,11 +322,19 @@ async function getRecentTweets(userId, startTime, accessToken) {
   }
 }
 
-// Rate limit handling for @jfcarpio
-async function handleRateLimits() {
+// Enhanced rate limit handling for @jfcarpio
+async function handleRateLimits(response) {
   try {
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Basic 1-second delay
-    // In production, parse x-rate-limit-remaining and x-rate-limit-reset headers
+    const rateLimitRemaining = response.headers.get('x-rate-limit-remaining');
+    const rateLimitReset = response.headers.get('x-rate-limit-reset');
+    if (rateLimitRemaining && parseInt(rateLimitRemaining) <= 5) {
+      const resetTime = new Date(parseInt(rateLimitReset) * 1000);
+      const waitTime = Math.max(0, resetTime - Date.now() + 1000); // Add 1s buffer
+      console.log(`Rate limit nearing exhaustion. Waiting ${waitTime / 1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Default 1s delay
+    }
   } catch (error) {
     console.error('Error in handleRateLimits for @jfcarpio:', error);
     throw error;
@@ -307,6 +379,42 @@ function displayResults(users, userId) {
     `;
   }
 }
+
+// Generate random string for CSRF protection or PKCE
+function generateRandomString(length) {
+  const array = new Uint8Array(length);
+  crypto.getRandomValues(array);
+  return Array.from(array, x => x.toString(36)).join('').slice(0, length);
+}
+
+// Generate PKCE code verifier
+function generateCodeVerifier() {
+  const verifier = generateRandomString(43); // Minimum length per RFC 7636
+  sessionStorage.setItem('codeVerifier', verifier); // Store securely in session storage
+  return verifier;
+}
+
+// Generate PKCE code challenge
+async function generateCodeChallenge(codeVerifier) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(codeVerifier);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(hash)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// Test cases (commented for now, implement in a testing framework)
+/*
+  test('initiateAuthFlow should return auth code on successful X redirect', async () => {
+    // Mock window.open and location.href
+  });
+  test('exchangeCodeForToken should retry on failure and succeed', async () => {
+    // Mock fetch with rate limit errors
+  });
+  test('handleRateLimits should wait appropriately on rate limits', async () => {
+    // Mock response headers
+  });
+*/
 
 // Event listener for @jfcarpio
 document.getElementById('startButton').addEventListener('click', findInactiveNonMutuals);
