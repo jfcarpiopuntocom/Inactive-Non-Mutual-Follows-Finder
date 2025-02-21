@@ -2,6 +2,7 @@
 const X_API_BASE = 'https://api.twitter.com/2';
 const CLIENT_ID = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app client ID
 const REDIRECT_URI = 'https://jfcarpiopuntocom.github.io/Inactive-Non-Mutual-Follows-Finder/callback'; // Your live GitHub Pages URL
+const ACCESS_TOKEN = '11859152-XTKsuXYZkqAd0djHHqRfmnMaiN3n6rcOgMmLjyLY8'; // Your provided X access token
 const MAX_RETRIES = 5; // Increased retries for robustness
 const RETRY_DELAY_BASE = 2000; // 2 seconds initial delay for exponential backoff
 
@@ -11,22 +12,32 @@ async function findInactiveNonMutuals() {
   const retryButton = document.getElementById('retryButton');
   const progressDiv = document.getElementById('progress');
   const resultsDiv = document.getElementById('results');
-  const errorDiv = document.getElementById('error'); // Ensure this is defined
+  const errorDiv = document.getElementById('error'); // Explicitly initialize errorDiv
   const loadingDiv = document.getElementById('loading');
   const instructionsDiv = document.getElementById('instructions');
   const callbackInput = document.getElementById('callbackUrl');
   const submitCallbackButton = document.getElementById('submitCallback');
 
   let authCode = null;
+  let accessToken = null;
 
-  // Ensure all DOM elements exist (double-check)
+  // Ensure all DOM elements exist (double-check and log)
   const requiredElements = [
-    startButton, progressDiv, resultsDiv, errorDiv, loadingDiv, instructionsDiv, callbackInput, submitCallbackButton
+    { el: startButton, id: 'startButton' },
+    { el: progressDiv, id: 'progress' },
+    { el: resultsDiv, id: 'results' },
+    { el: errorDiv, id: 'error' },
+    { el: loadingDiv, id: 'loading' },
+    { el: instructionsDiv, id: 'instructions' },
+    { el: callbackInput, id: 'callbackUrl' },
+    { el: submitCallbackButton, id: 'submitCallback' }
   ];
-  if (requiredElements.some(el => el === null)) {
-    console.error('One or more DOM elements missing for @jfcarpio app. Check index.html.');
-    const missingElements = requiredElements.filter(el => el === null).map(el => el?.id || 'unknown');
-    errorDiv.innerHTML = `<p class="error">Error: Missing DOM elements (${missingElements.join(', ')}) for @jfcarpio. Please refresh, check console, and ensure index.html matches this version.</p>`;
+  const missingElements = requiredElements.filter(({ el }) => el === null).map(({ id }) => id);
+  if (missingElements.length > 0) {
+    console.error('DOM elements missing for @jfcarpio app:', missingElements);
+    const errorMessage = `Error: Missing DOM elements (${missingElements.join(', ')}) for @jfcarpio. Please refresh, check console, ensure index.html matches this version, and clear browser cache.`;
+    if (errorDiv) errorDiv.innerHTML = `<p class="error">${errorMessage}</p>`;
+    else console.log(`%c${errorMessage}`, 'color: red; font-weight: bold;');
     if (startButton) startButton.disabled = false;
     return;
   }
@@ -42,24 +53,37 @@ async function findInactiveNonMutuals() {
   instructionsDiv.style.display = 'block';
 
   try {
-    // Step 1: Validate client ID before proceeding
-    console.log('Validating client ID for @jfcarpio...');
-    const isClientIdValid = await validateClientId();
-    if (!isClientIdValid) {
-      throw new Error('Invalid client ID for @jfcarpio. Please verify your X app credentials in the X Developer Portal and update CLIENT_ID in app.js.');
+    // Step 1: Try using the provided access token first for simplicity
+    console.log('Attempting to use access token for @jfcarpio...');
+    try {
+      accessToken = await validateAndUseAccessToken(ACCESS_TOKEN);
+      console.log('Access token validated and used for @jfcarpio:', accessToken);
+      progressDiv.innerHTML = `Authenticated as: @jfcarpio (using access token)`;
+    } catch (tokenError) {
+      console.warn('Access token failed for @jfcarpio:', tokenError.message);
+      errorDiv.innerHTML = `<p class="error">Warning: Access token invalid or expired for @jfcarpio - ${tokenError.message}. Falling back to OAuth 2.0 PKCE authentication.</p>`;
+      console.log('Falling back to OAuth 2.0 PKCE for @jfcarpio...');
+
+      // Step 2: Validate client ID before OAuth flow
+      console.log('Validating client ID for @jfcarpio...');
+      const isClientIdValid = await validateClientId();
+      if (!isClientIdValid) {
+        throw new Error('Invalid client ID for @jfcarpio. Please verify your X app credentials in the X Developer Portal and update CLIENT_ID in app.js.');
+      }
+      console.log('Client ID validated for @jfcarpio.');
+
+      // Step 3: Initiate OAuth 2.0 PKCE authentication flow for @jfcarpio, handling already logged-in state
+      console.log('Starting X authentication for @jfcarpio (reconfirming even if already logged in)...');
+      authCode = await initiateAuthFlowWithRetries();
+      console.log('Authorization code obtained for @jfcarpio:', authCode);
+
+      // Step 4: Exchange code for access token with failsafes
+      accessToken = await exchangeCodeForTokenWithRetries(authCode);
+      console.log('Successfully authenticated with X for @jfcarpio via OAuth. Access token:', accessToken);
+      progressDiv.innerHTML = `Authenticated as: @jfcarpio (reconfirmed via OAuth)`;
     }
-    console.log('Client ID validated for @jfcarpio.');
 
-    // Step 2: Initiate OAuth 2.0 PKCE authentication flow for @jfcarpio, handling already logged-in state
-    console.log('Starting X authentication for @jfcarpio (reconfirming even if already logged in)...');
-    authCode = await initiateAuthFlowWithRetries();
-    console.log('Authorization code obtained for @jfcarpio:', authCode);
-
-    // Step 3: Exchange code for access token with failsafes
-    const accessToken = await exchangeCodeForTokenWithRetries(authCode);
-    console.log('Successfully authenticated with X for @jfcarpio. Access token:', accessToken);
-
-    // Step 4: Fetch and verify user ID for @jfcarpio
+    // Step 5: Fetch and verify user ID for @jfcarpio
     console.log('Fetching user ID for @jfcarpio...');
     const userId = await getUserId(accessToken);
     console.log('User ID for @jfcarpio obtained:', userId);
@@ -73,7 +97,7 @@ async function findInactiveNonMutuals() {
     console.log('Verified X account: @jfcarpio (reconfirmed)');
     progressDiv.innerHTML = `Authenticated as: @${userDetails.username} (reconfirmed)`;
 
-    // Step 5: Fetch follows and followers for @jfcarpio
+    // Step 6: Fetch follows and followers for @jfcarpio
     progressDiv.innerHTML = 'Fetching follows for @jfcarpio...';
     console.log('Fetching follows for @jfcarpio...');
     const follows = await getAllFollowsWithRetries(userId, accessToken);
@@ -84,13 +108,13 @@ async function findInactiveNonMutuals() {
     const followers = await getAllFollowersWithRetries(userId, accessToken);
     console.log('Followers for @jfcarpio fetched:', followers.length);
 
-    // Step 6: Identify non-mutuals for @jfcarpio
+    // Step 7: Identify non-mutuals for @jfcarpio
     console.log('Identifying non-mutuals for @jfcarpio...');
     const followerIds = new Set(followers.map(follower => follower.id));
     const nonMutuals = follows.filter(follow => !followerIds.has(follow.id));
     console.log('Non-mutuals for @jfcarpio identified:', nonMutuals.length);
 
-    // Step 7: Check inactivity for non-mutuals (expanded scope)
+    // Step 8: Check inactivity for non-mutuals (expanded scope)
     const inactiveNonMutuals = [];
     const fourMonthsAgo = new Date();
     fourMonthsAgo.setMonth(fourMonthsAgo.getMonth() - 4);
@@ -117,16 +141,16 @@ async function findInactiveNonMutuals() {
       await handleRateLimits();
     }
 
-    // Step 8: Display results professionally for @jfcarpio
+    // Step 9: Display results professionally for @jfcarpio
     console.log('Displaying results for @jfcarpio...');
     displayResults(inactiveNonMutuals, userId);
   } catch (error) {
     console.error('Error in findInactiveNonMutuals for @jfcarpio:', error);
     errorDiv.innerHTML = `<p class="error">Critical Error for @jfcarpio: ${error.message}. Check the console for detailed bug report, including stack trace and error context.</p>`;
     retryButton.style.display = 'block';
-    // Retry authentication automatically if it’s an authentication-related error
-    if (error.message.includes('Authentication') || error.message.includes('token') || error.message.includes('access') || error.message.includes('client')) {
-      console.log('Attempting to retry authentication automatically for @jfcarpio...');
+    // Retry automatically if it’s an authentication, token, or API-related error
+    if (error.message.includes('Authentication') || error.message.includes('token') || error.message.includes('access') || error.message.includes('client') || error.message.includes('HTTP')) {
+      console.log('Attempting to retry automatically for @jfcarpio...');
       setTimeout(() => findInactiveNonMutuals(), RETRY_DELAY_BASE); // Retry after 2 seconds
     }
   } finally {
@@ -134,6 +158,31 @@ async function findInactiveNonMutuals() {
     startButton.innerText = 'Authenticate with X and Find Inactive Non-Mutuals';
     loadingDiv.style.display = 'none';
     instructionsDiv.style.display = 'none';
+  }
+}
+
+/**
+ * Validates and uses the provided access token for @jfcarpio, falling back if invalid.
+ * @param {string} token - The access token
+ * @returns {Promise<string>} Valid access token or throws error
+ */
+async function validateAndUseAccessToken(token) {
+  try {
+    const response = await fetchWithRetry(`${X_API_BASE}/users/me?user.fields=username,name`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Access token validation failed for @jfcarpio: HTTP ${response.status} - ${errorText}`);
+    }
+    const userDetails = await response.json().data;
+    if (userDetails.username !== 'jfcarpio') {
+      throw new Error('Access token does not belong to @jfcarpio. Please provide the correct token.');
+    }
+    return token;
+  } catch (error) {
+    console.error('Error validating access token for @jfcarpio:', error);
+    throw error;
   }
 }
 
@@ -451,6 +500,7 @@ async function handleRateLimits(response) {
     }
   } catch (error) {
     console.error('Error in handleRateLimits for @jfcarpio:', error);
+    errorDiv.innerHTML = `<p class="error">Rate limit handling error for @jfcarpio: ${error.message}. Check console for details.</p>`;
     throw error;
   }
 }
@@ -539,7 +589,7 @@ async function generateCodeChallenge(codeVerifier) {
 
 // Test cases (commented for future implementation)
 /*
-  test('findInactiveNonMutuals should authenticate with X and fetch data reliably for @jfcarpio', async () => {
+  test('findInactiveNonMutuals should authenticate with X or access token and fetch data reliably for @jfcarpio', async () => {
     // Mock fetch with X API responses for @jfcarpio, including rate limits and errors
   });
   test('initiateAuthFlowWithRetries should handle already logged-in state and succeed for @jfcarpio', async () => {
@@ -558,6 +608,11 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('Event listener attached successfully for @jfcarpio.');
   } else {
     console.error('Start button not found for @jfcarpio. Check index.html.');
-    document.getElementById('error').innerHTML = '<p class="error">Error: Button not found. Please refresh and check console for details.</p>';
+    const errorDiv = document.getElementById('error');
+    if (errorDiv) {
+      errorDiv.innerHTML = '<p class="error">Error: Button not found. Please refresh and check console for details.</p>';
+    } else {
+      console.log('%cError: errorDiv not found. Please ensure index.html includes <div id="error">.', 'color: red; font-weight: bold;');
+    }
   }
 });
