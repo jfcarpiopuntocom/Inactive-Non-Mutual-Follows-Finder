@@ -1,10 +1,10 @@
 // Constants for clarity and maintainability
 const X_API_BASE = 'https://api.twitter.com/2';
-const CLIENT_ID = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app client ID
+const CLIENT_ID = 'QlK4UFjcTMT9vHFtUZho90YIp'; // Your X app client ID (to be verified)
 const REDIRECT_URI = 'https://jfcarpiopuntocom.github.io/Inactive-Non-Mutual-Follows-Finder/callback'; // Your live GitHub Pages URL
 const ACCESS_TOKEN = '11859152-XTKsuXYZkqAd0djHHqRfmnMaiN3n6rcOgMmLjyLY8'; // Your provided X access token
 const MAX_RETRIES = 5; // Increased retries for robustness
-const RETRY_DELAY_BASE = 5000; // Increased to 5 seconds to prevent rapid looping
+const RETRY_DELAY_BASE = 5000; // 5 seconds initial delay to prevent rapid looping
 const MAX_RETRY_ATTEMPTS = 3; // Limit total retry attempts to prevent infinite loops
 
 let retryCount = 0; // Track total retry attempts
@@ -71,11 +71,11 @@ async function findInactiveNonMutuals() {
       errorDiv.innerHTML += `<pre>Warning: Access token invalid or expired for @jfcarpio - ${tokenError.message}. Falling back to OAuth 2.0 PKCE authentication.</pre>`;
       console.log('Falling back to OAuth 2.0 PKCE for @jfcarpio...');
 
-      // Step 2: Validate client ID before OAuth flow
+      // Step 2: Validate client ID before OAuth flow with enhanced checking
       console.log('Validating client ID for @jfcarpio...');
-      const isClientIdValid = await validateClientId();
+      const isClientIdValid = await validateClientIdWithDetails(CLIENT_ID);
       if (!isClientIdValid) {
-        throw new Error('Invalid client ID for @jfcarpio. Please verify your X app credentials in the X Developer Portal and update CLIENT_ID in app.js.');
+        throw new Error('Invalid client ID for @jfcarpio. Please verify your X app credentials in the X Developer Portal (ensure the client ID and redirect URI match) and update CLIENT_ID in app.js.');
       }
       console.log('Client ID validated for @jfcarpio.');
 
@@ -177,7 +177,11 @@ async function findInactiveNonMutuals() {
       }, waitTime);
     } else {
       console.error('Max retry attempts reached for @jfcarpio. Please check credentials and retry manually.');
-      errorDiv.innerHTML += `\n<pre>Max retries reached for @jfcarpio. Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.</pre>`;
+      if (errorDiv) {
+        errorDiv.innerHTML += `\n<pre>Max retries reached for @jfcarpio. Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.</pre>`;
+      } else {
+        console.log(`%cMax retries reached for @jfcarpio. Please verify your Access Token, API Key, and X app settings in the X Developer Portal, then click "Retry Authentication" or refresh the page.`, 'color: red; font-weight: bold;');
+      }
     }
   } finally {
     startButton.disabled = false;
@@ -213,18 +217,20 @@ async function validateAndUseAccessToken(token) {
 }
 
 /**
- * Validates the client ID against X API to ensure it’s correct for @jfcarpio.
+ * Validates the client ID against X API with detailed error reporting for @jfcarpio.
+ * @param {string} clientId - The client ID to validate
  * @returns {Promise<boolean>} Whether the client ID is valid
  */
-async function validateClientId() {
+async function validateClientIdWithDetails(clientId) {
   try {
     const response = await fetchWithRetry(`${X_API_BASE}/oauth2/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `grant_type=client_credentials&client_id=${CLIENT_ID}`
+      body: `grant_type=client_credentials&client_id=${clientId}`
     });
     if (!response.ok) {
-      console.warn('Client ID validation failed for @jfcarpio:', await response.text());
+      const errorText = await response.text();
+      console.warn('Client ID validation failed for @jfcarpio:', errorText);
       return false;
     }
     return true;
@@ -393,31 +399,6 @@ async function exchangeCodeForTokenWithRetries(authCode) {
       }
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
-  }
-}
-
-/**
- * Validates and uses the provided access token for @jfcarpio, falling back if invalid.
- * @param {string} token - The access token
- * @returns {Promise<string>} Valid access token or throws error
- */
-async function validateAndUseAccessToken(token) {
-  try {
-    const response = await fetchWithRetry(`${X_API_BASE}/users/me?user.fields=username,name`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Access token validation failed for @jfcarpio: HTTP ${response.status} - ${errorText}`);
-    }
-    const userDetails = await response.json().data;
-    if (userDetails.username !== 'jfcarpio') {
-      throw new Error('Access token does not belong to @jfcarpio. Please provide the correct token.');
-    }
-    return token;
-  } catch (error) {
-    console.error('Error validating access token for @jfcarpio:', error);
-    throw error;
   }
 }
 
