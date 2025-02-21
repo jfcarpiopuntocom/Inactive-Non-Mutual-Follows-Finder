@@ -11,7 +11,7 @@ async function findInactiveNonMutuals() {
   const retryButton = document.getElementById('retryButton');
   const progressDiv = document.getElementById('progress');
   const resultsDiv = document.getElementById('results');
-  const errorDiv = document.getElementById('error');
+  const errorDiv = document.getElementById('error'); // Ensure this is defined
   const loadingDiv = document.getElementById('loading');
   const instructionsDiv = document.getElementById('instructions');
   const callbackInput = document.getElementById('callbackUrl');
@@ -19,10 +19,14 @@ async function findInactiveNonMutuals() {
 
   let authCode = null;
 
-  // Ensure button and DOM elements exist (double-check)
-  if (!startButton || !progressDiv || !resultsDiv || !errorDiv || !loadingDiv || !instructionsDiv || !callbackInput || !submitCallbackButton) {
-    console.error('DOM elements missing for @jfcarpio app. Check index.html.');
-    errorDiv.innerHTML = '<p class="error">Error: App initialization failed. Please refresh and check console for details.</p>';
+  // Ensure all DOM elements exist (double-check)
+  const requiredElements = [
+    startButton, progressDiv, resultsDiv, errorDiv, loadingDiv, instructionsDiv, callbackInput, submitCallbackButton
+  ];
+  if (requiredElements.some(el => el === null)) {
+    console.error('One or more DOM elements missing for @jfcarpio app. Check index.html.');
+    const missingElements = requiredElements.filter(el => el === null).map(el => el?.id || 'unknown');
+    errorDiv.innerHTML = `<p class="error">Error: Missing DOM elements (${missingElements.join(', ')}) for @jfcarpio. Please refresh, check console, and ensure index.html matches this version.</p>`;
     if (startButton) startButton.disabled = false;
     return;
   }
