@@ -80,6 +80,10 @@
       padding: 10px;
       border-radius: 4px;
       border: 1px solid #D32F2F;
+      overflow: auto; /* Make errors scrollable */
+      max-height: 200px; /* Limit height to prevent overflow */
+      white-space: pre-wrap; /* Preserve formatting for copy/paste */
+      user-select: text; /* Ensure text is selectable */
     }
     #loading {
       display: none;
@@ -114,20 +118,20 @@
 </head>
 <body>
   <h1>Inactive Non-Mutual Follows Finder for @jfcarpio</h1>
-  <p>Click below to find up to 3,000 people you follow on X (@jfcarpio) who haven’t tweeted in over 4 months and don’t follow you back. You’ll authenticate with X first, even if already logged in, or use your access token if provided.</p>
+  <p>Click below to find up to 3,000 people you follow on X (@jfcarpio) who haven’t tweeted in over 4 months and don’t follow you back. You’ll authenticate with X or use your access token, with failsafe retries.</p>
   <button id="startButton">Authenticate with X and Find Inactive Non-Mutuals</button>
   <button id="retryButton" onclick="findInactiveNonMutuals()">Retry Authentication</button>
   <div id="progress"></div>
   <div id="loading"><div class="loading-spinner"></div> Loading...</div>
   <div id="results"></div>
-  <div id="error"></div> <!-- Confirmed this exists -->
+  <div id="error"></div> <!-- Confirmed this exists and is selectable -->
   <div id="instructions">
     <h3>Authentication Instructions for @jfcarpio (Failsafe)</h3>
     <p>1. A new browser window or tab will open to authenticate with X. If already logged into X, confirm access with @jfcarpio or log in again.</p>
-    <p>2. If you see “Something went wrong,” retry by closing the window and clicking “Retry Authentication” below, or follow these steps:</p>
+    <p>2. If you see an error, retry by closing the window and clicking “Retry Authentication” below, or follow these steps:</p>
     <p>3. After authorization, X will redirect to <code>https://jfcarpiopuntocom.github.io/Inactive-Non-Mutual-Follows-Finder/callback</code>. Copy the full URL from the address bar.</p>
     <p>4. Paste the URL here: <input type="text" id="callbackUrl" placeholder="Paste callback URL here" style="width: 100%; margin: 10px 0;"></p>
-    <p>5. Click "Submit Callback" to continue. If it fails again, the app will retry automatically or let you retry manually.</p>
+    <p>5. Click "Submit Callback" to continue. If it fails, the app will retry up to 5 times or let you retry manually.</p>
     <button id="submitCallback">Submit Callback</button>
   </div>
   <script src="app.js" defer></script> <!-- Use defer to ensure DOM is ready -->
